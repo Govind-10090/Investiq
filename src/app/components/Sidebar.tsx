@@ -11,7 +11,8 @@ import {
   Lightbulb, 
   Newspaper, 
   Bell, 
-  Settings 
+  Settings,
+  X
 } from "lucide-react";
 import { cn } from "../utils/cn";
 
@@ -32,20 +33,37 @@ const navItems = [
 
 import { useAuthStore } from "../../store";
 
-export function Sidebar() {
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore();
   const handleLogout = () => {
     logout();
   };
 
-  return (
-    <aside className="w-64 border-r border-sidebar-border/40 bg-sidebar flex flex-col">
-      <div className="p-6 border-b border-sidebar-border/40">
-        <h1 className="text-xl tracking-tight text-sidebar-foreground flex items-center gap-2">
-          <TrendingUp className="size-6 text-emerald-500" />
-          InvestIQ
-        </h1>
-        <p className="text-xs text-muted-foreground mt-1">Investment Analytics</p>
+  const sidebarContent = (
+    <>
+      <div className="p-6 border-b border-sidebar-border/40 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl tracking-tight text-sidebar-foreground flex items-center gap-2">
+            <TrendingUp className="size-6 text-emerald-500" />
+            InvestIQ
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">Investment Analytics</p>
+        </div>
+        {/* Close button visible only on mobile */}
+        {onMobileClose && (
+          <button
+            onClick={onMobileClose}
+            className="lg:hidden p-1.5 hover:bg-muted/50 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="size-5" />
+          </button>
+        )}
       </div>
       
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -54,6 +72,7 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.to === "/"}
+            onClick={onMobileClose}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm",
@@ -90,7 +109,36 @@ export function Sidebar() {
           <span>Sign Out</span>
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar — always visible on lg+ */}
+      <aside className="hidden lg:flex w-64 border-r border-sidebar-border/40 bg-sidebar flex-col shrink-0">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile drawer overlay */}
+      {isMobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 flex"
+          role="dialog"
+          aria-modal="true"
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={onMobileClose}
+          />
+          {/* Drawer panel */}
+          <aside className="relative w-72 max-w-[85vw] bg-sidebar flex flex-col border-r border-sidebar-border/40 shadow-2xl animate-in slide-in-from-left duration-250">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
+
 

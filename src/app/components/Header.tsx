@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Bell, Settings as SettingsIcon, BrainCircuit } from "lucide-react";
+import { Search, Bell, Settings as SettingsIcon, BrainCircuit, Menu } from "lucide-react";
 import { useAlertStore, useMarketStore } from "../../store";
 import { useNavigate } from "react-router";
 
 interface HeaderProps {
   onToggleAI: () => void;
+  onToggleSidebar?: () => void;
 }
 
-export function Header({ onToggleAI }: HeaderProps) {
+export function Header({ onToggleAI, onToggleSidebar }: HeaderProps) {
   const navigate = useNavigate();
   const { triggeredAlerts, clearTriggered } = useAlertStore();
   const { assets } = useMarketStore();
@@ -67,7 +68,16 @@ export function Header({ onToggleAI }: HeaderProps) {
   };
 
   return (
-    <header className="h-16 border-b border-border/40 bg-card flex items-center justify-between px-6 shrink-0 z-20">
+    <header className="h-16 border-b border-border/40 bg-card flex items-center justify-between px-3 sm:px-6 shrink-0 z-20">
+      {/* Mobile Hamburger */}
+      <button
+        onClick={onToggleSidebar}
+        className="lg:hidden p-2 mr-2 hover:bg-muted/50 rounded-lg text-muted-foreground hover:text-foreground transition-colors shrink-0"
+        aria-label="Open menu"
+      >
+        <Menu className="size-5" />
+      </button>
+
       {/* Search Field */}
       <div className="flex-1 max-w-xl relative" ref={searchRef}>
         <div className="relative">
