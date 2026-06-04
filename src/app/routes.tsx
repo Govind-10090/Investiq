@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createHashRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Dashboard } from "./pages/Dashboard";
@@ -15,7 +15,7 @@ import { Alerts } from "./pages/Alerts";
 import { Settings } from "./pages/Settings";
 import { Auth } from "./pages/Auth";
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   {
     path: "/auth",
     Component: Auth,
