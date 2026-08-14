@@ -7,7 +7,7 @@ export interface AuthState {
   loading: boolean;
   error: string | null;
   login: (e: string, p: string) => Promise<void>;
-  register: (e: string, p: string, name: string, phone?: string) => Promise<void>;
+  register: (e: string, p: string, name: string) => Promise<void>;
   googleLogin: () => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (e: string) => Promise<void>;
@@ -28,10 +28,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       throw e;
     }
   },
-  register: async (email, password, displayName, phone) => {
+  register: async (email, password, displayName) => {
     set({ loading: true, error: null });
     try {
-      const user = await authService.register(email, password, displayName, phone);
+      const user = await authService.register(email, password, displayName);
       set({ user, loading: false });
     } catch (e: any) {
       set({ error: e.message || "Registration failed", loading: false });

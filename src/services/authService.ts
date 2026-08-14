@@ -44,7 +44,7 @@ export const authService = {
     }
   },
 
-  register: async (email: string, password: string, displayName: string, phone?: string): Promise<AppUser> => {
+  register: async (email: string, password: string, displayName: string): Promise<AppUser> => {
     let appUser: AppUser;
     if (isLiveFirebase) {
       const res = await createUserWithEmailAndPassword(firebaseAuth, email, password);
@@ -64,14 +64,6 @@ export const authService = {
       saveMockUsers(users);
       appUser = { uid: email, email, displayName };
       saveMockCurrentUser(appUser);
-    }
-
-    // If phone number is provided and verified, save to user settings
-    if (phone) {
-      try {
-        const { dbService } = await import("./dbService");
-        await dbService.saveSettings(appUser.uid, { phone });
-      } catch (_) {}
     }
 
     // Automatically send and queue welcome email

@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useAuthStore } from "../../store";
-import { TrendingUp, Mail, Lock, User, Phone, AlertCircle, ArrowLeft, RotateCw, ShieldCheck } from "lucide-react";
+import { TrendingUp, Mail, Lock, User, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router";
-import { emailService } from "../../services/emailService";
 
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,63 +9,14 @@ export function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [phone, setPhone] = useState("");
-  
-  // Registration OTP step states
-  const [regStep, setRegStep] = useState<"form" | "otp">("form");
-  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""]);
-  const [generatedOtp, setGeneratedOtp] = useState<string>("");
-  const [resendTimer, setResendTimer] = useState<number>(30);
-  const [isResendDisabled, setIsResendDisabled] = useState<boolean>(true);
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
   const { login, register, googleLogin, resetPassword, loading } = useAuthStore();
   const navigate = useNavigate();
-
-  // Timer countdown effect for OTP resend
-  useEffect(() => {
-    let interval: any = null;
-    if (regStep === "otp" && resendTimer > 0) {
-      interval = setInterval(() => {
-        setResendTimer((prev) => prev - 1);
-      }, 1000);
-    } else if (resendTimer === 0) {
-      setIsResendDisabled(false);
-    }
-    return () => clearInterval(interval);
-  }, [regStep, resendTimer]);
-
-  // Generate and dispatch real OTP to user's email & SMS queue
-  const sendOtpCode = async () => {
-    setIsSendingOtp(true);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(code);
-    setResendTimer(30);
-    setIsResendDisabled(true);
-    setOtpDigits(["", "", "", "", "", ""]);
-    setOtpError(null);
-
-    try {
-      // Dispatches real OTP to user's email & Firebase trigger email collection
-      await emailService.sendOtpEmail(email, code, displayName, `+91 ${phone.trim()}`);
-    } catch (e) {
-      console.warn("OTP dispatch notice:", e);
-    } finally {
-      setIsSendingOtp(false);
-      setTimeout(() => {
-        otpInputsRef.current[0]?.focus();
-      }, 150);
-    }
-  };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setToastMessage(null);
-    setOtpError(null);
 
     try {
       if (isForgotPassword) {
@@ -77,73 +27,12 @@ export function Auth() {
         await login(email, password);
         navigate("/");
       } else {
-        // Registration Flow Step 1: Validate phone and dispatch OTP
-        const cleanPhone = phone.replace(/\D/g, "");
-        if (cleanPhone.length < 10) {
-          setToastMessage({ type: "error", text: "Please enter a valid 10-digit mobile number." });
-          return;
-        }
-
-        setRegStep("otp");
-        await sendOtpCode();
+        await register(email, password, displayName);
+        sessionStorage.setItem("investiq_just_registered", displayName || "Investor");
+        navigate("/");
       }
     } catch (err: any) {
       setToastMessage({ type: "error", text: err.message || "Authentication failed" });
-    }
-  };
-
-  // Handle OTP digit box input
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-
-    const newDigits = [...otpDigits];
-    newDigits[index] = value.slice(-1);
-    setOtpDigits(newDigits);
-    setOtpError(null);
-
-    if (value && index < 5) {
-      otpInputsRef.current[index + 1]?.focus();
-    }
-  };
-
-  // Handle OTP backspace and paste
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
-      otpInputsRef.current[index - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (pasted.length === 6) {
-      const newDigits = pasted.split("");
-      setOtpDigits(newDigits);
-      otpInputsRef.current[5]?.focus();
-    }
-  };
-
-  // Verify OTP and complete registration
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const enteredOtp = otpDigits.join("");
-    if (enteredOtp.length !== 6) {
-      setOtpError("Please enter all 6 digits of the verification code.");
-      return;
-    }
-
-    if (enteredOtp !== generatedOtp && enteredOtp !== "123456") {
-      setOtpError("Invalid verification code. Please enter the 6-digit code received.");
-      return;
-    }
-
-    try {
-      const fullPhone = `+91 ${phone.trim()}`;
-      await register(email, password, displayName, fullPhone);
-      sessionStorage.setItem("investiq_just_registered", displayName || "Investor");
-      navigate("/");
-    } catch (err: any) {
-      setOtpError(err.message || "Registration failed. Please try again.");
     }
   };
 
@@ -188,9 +77,6 @@ export function Auth() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* VIEW 1: FORGOT PASSWORD */}
-        {/* ========================================================================= */}
         {isForgotPassword ? (
           <form onSubmit={handleAuthSubmit} className="space-y-4">
             <h2 className="text-lg font-medium text-foreground">Reset Password</h2>
@@ -216,7 +102,7 @@ export function Auth() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
             >
               {loading ? "Sending link..." : "Send Reset Email"}
             </button>
@@ -229,92 +115,13 @@ export function Auth() {
               Back to Login
             </button>
           </form>
-        ) : regStep === "otp" ? (
-          /* ========================================================================= */
-          /* VIEW 2: OTP VERIFICATION STEP */
-          /* ========================================================================= */
-          <form onSubmit={handleVerifyOtp} className="space-y-5">
-            <div className="flex items-center gap-2 mb-1">
-              <button
-                type="button"
-                onClick={() => setRegStep("form")}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-              >
-                <ArrowLeft className="size-4" />
-              </button>
-              <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                Step 2 of 2 — Verification Code
-              </span>
-            </div>
-
-            <div className="text-center space-y-1.5 pb-1">
-              <div className="size-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-2">
-                <ShieldCheck className="size-6 text-emerald-400" />
-              </div>
-              <h2 className="text-lg font-bold text-foreground">Enter Verification Code</h2>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                We sent a 6-digit code to your email <strong className="text-foreground">{email}</strong> and SMS to <strong className="text-foreground">+91 {phone}</strong>.
-              </p>
-            </div>
-
-            {/* OTP Error Message */}
-            {otpError && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/25 rounded-lg text-xs text-red-400">
-                <AlertCircle className="size-4 shrink-0" />
-                <span>{otpError}</span>
-              </div>
-            )}
-
-            {/* 6 Digit OTP Input Boxes */}
-            <div className="flex items-center justify-between gap-2 py-2">
-              {otpDigits.map((digit, idx) => (
-                <input
-                  key={idx}
-                  ref={(el) => (otpInputsRef.current[idx] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(idx, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                  onPaste={idx === 0 ? handleOtpPaste : undefined}
-                  className="w-12 h-13 text-center text-xl font-bold bg-background border border-border/40 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl text-foreground outline-none transition-all"
-                />
-              ))}
-            </div>
-
-            {/* Resend OTP button */}
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-muted-foreground">Didn't receive code?</span>
-              <button
-                type="button"
-                disabled={isResendDisabled || isSendingOtp}
-                onClick={sendOtpCode}
-                className="text-emerald-400 hover:text-emerald-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCw className={`size-3 ${isSendingOtp ? "animate-spin" : ""}`} />
-                {isSendingOtp ? "Sending..." : isResendDisabled ? `Resend (${resendTimer}s)` : "Resend Code"}
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-            >
-              {loading ? "Verifying & Creating Account..." : "Verify & Complete Registration"}
-            </button>
-          </form>
         ) : (
-          /* ========================================================================= */
-          /* VIEW 3: SIGN IN / REGISTRATION FORM */
-          /* ========================================================================= */
           <form onSubmit={handleAuthSubmit} className="space-y-5">
             {/* Tabs */}
             <div className="grid grid-cols-2 p-1 bg-muted border border-border/30 rounded-lg">
               <button
                 type="button"
-                onClick={() => { setIsLogin(true); setToastMessage(null); setRegStep("form"); }}
+                onClick={() => { setIsLogin(true); setToastMessage(null); }}
                 className={`py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
                   isLogin ? "bg-card text-foreground shadow-sm font-semibold" : "text-muted-foreground hover:text-foreground"
                 }`}
@@ -332,7 +139,7 @@ export function Auth() {
               </button>
             </div>
 
-            {/* Registration Specific Fields */}
+            {/* Registration Name Field */}
             {!isLogin && (
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground font-medium">Full Name</label>
@@ -366,33 +173,6 @@ export function Auth() {
               </div>
             </div>
 
-            {/* Phone Number Field (Only on Register) */}
-            {!isLogin && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs text-muted-foreground font-medium">Mobile Phone Number</label>
-                  <span className="text-[10px] text-emerald-400 font-semibold">OTP Verification</span>
-                </div>
-                <div className="relative flex">
-                  <div className="h-10 px-3 bg-muted border border-r-0 border-border/30 rounded-l-lg flex items-center gap-1 text-xs text-foreground font-semibold shrink-0">
-                    <span>🇮🇳 +91</span>
-                  </div>
-                  <div className="relative flex-1">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                    <input
-                      type="tel"
-                      required
-                      placeholder="98765 43210"
-                      maxLength={10}
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                      className="w-full h-10 pl-9 pr-4 bg-background border border-border/30 rounded-r-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Password Field */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -423,14 +203,14 @@ export function Auth() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || isSendingOtp}
+              disabled={loading}
               className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              {loading || isSendingOtp
-                ? "Sending verification code..."
+              {loading
+                ? "Authenticating..."
                 : isLogin
                 ? "Sign In"
-                : "Continue to Verification →"}
+                : "Create Account"}
             </button>
 
             {/* Divider */}
