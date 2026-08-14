@@ -21,74 +21,119 @@ import {
 
 import { emailService } from "./emailService";
 
+export function formatAuthError(err: any): string {
+  const code = err?.code || "";
+  const msg = err?.message || "";
+
+  if (code === "auth/email-already-in-use" || msg.includes("email-already-in-use")) {
+    return "This email is already registered. Please click 'Sign In' instead.";
+  }
+  if (code === "auth/weak-password" || msg.includes("weak-password")) {
+    return "Password must be at least 6 characters long.";
+  }
+  if (code === "auth/invalid-email" || msg.includes("invalid-email")) {
+    return "Please enter a valid email address.";
+  }
+  if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential" || msg.includes("invalid-credential")) {
+    return "Invalid email or password. If you are new, please select 'Register'.";
+  }
+  if (code === "auth/too-many-requests" || msg.includes("too-many-requests")) {
+    return "Too many attempts. Please wait a minute and try again.";
+  }
+  if (code === "auth/network-request-failed" || msg.includes("network-request-failed")) {
+    return "Network connection issue. Please check your internet connection.";
+  }
+  return msg || "Authentication failed. Please check your details.";
+}
+
 export const authService = {
   login: async (email: string, password: string): Promise<AppUser> => {
+    const cleanEmail = email.trim().toLowerCase();
     if (isLiveFirebase) {
-      const res = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      return {
-        uid: res.user.uid,
-        email: res.user.email,
-        displayName: res.user.displayName || "User"
-      };
-    } else {
-      // Simulate network delays
-      await new Promise(r => setTimeout(r, 600));
-      const users = getMockUsers();
-      const user = users[email];
-      if (!user || user.password !== password) {
-        throw new Error("Invalid credentials");
+      try {
+        const res = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, password);
+        return {
+          uid: res.user.uid,
+          email: res.user.email || cleanEmail,
+          displayName: res.user.displayName || "Investor"
+        };
+      } catch (err: any) {
+        throw new Error(formatAuthError(err));
       }
-      const appUser = { uid: email, email, displayName: user.displayName };
+    } else {
+      await new Promise(r => setTimeout(r, 400));
+      const users = getMockUsers();
+      let user = users[cleanEmail];
+      if (!user) {
+        // Create user on first login in sandbox for seamless demo
+        user = { email: cleanEmail, password, displayName: "Retail Investor" };
+        users[cleanEmail] = user;
+        saveMockUsers(users);
+      } else if (user.password && user.password !== password) {
+        throw new Error("Invalid password. Please try again.");
+      }
+      const appUser: AppUser = { uid: cleanEmail, email: cleanEmail, displayName: user.displayName || "Retail Investor" };
       saveMockCurrentUser(appUser);
       return appUser;
     }
   },
 
   register: async (email: string, password: string, displayName: string): Promise<AppUser> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = displayName.trim() || "Investor";
+
     let appUser: AppUser;
     if (isLiveFirebase) {
-      const res = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-      await updateProfile(res.user, { displayName });
-      appUser = {
-        uid: res.user.uid,
-        email: res.user.email,
-        displayName: displayName
-      };
-    } else {
-      await new Promise(r => setTimeout(r, 600));
-      const users = getMockUsers();
-      if (users[email]) {
-        throw new Error("User already exists");
+      try {
+        const res = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, password);
+        try {
+          await updateProfile(res.user, { displayName: cleanName });
+        } catch (_) {}
+        appUser = {
+          uid: res.user.uid,
+          email: res.user.email || cleanEmail,
+          displayName: cleanName
+        };
+      } catch (err: any) {
+        throw new Error(formatAuthError(err));
       }
-      users[email] = { email, password, displayName };
+    } else {
+      await new Promise(r => setTimeout(r, 400));
+      const users = getMockUsers();
+      if (users[cleanEmail]) {
+        throw new Error("This email is already registered. Please click 'Sign In' instead.");
+      }
+      users[cleanEmail] = { email: cleanEmail, password, displayName: cleanName };
       saveMockUsers(users);
-      appUser = { uid: email, email, displayName };
+      appUser = { uid: cleanEmail, email: cleanEmail, displayName: cleanName };
       saveMockCurrentUser(appUser);
     }
 
-    // Automatically send and queue welcome email
+    // Trigger welcome email in background (non-blocking)
     try {
-      await emailService.sendWelcomeEmail(email, displayName);
-    } catch (err) {
-      console.warn("InvestIQ: Welcome email warning:", err);
-    }
+      emailService.sendWelcomeEmail(cleanEmail, cleanName).catch(() => {});
+    } catch (_) {}
 
     return appUser;
   },
 
   googleLogin: async (): Promise<AppUser> => {
     if (isLiveFirebase) {
-      const provider = new GoogleAuthProvider();
-      const res = await signInWithPopup(firebaseAuth, provider);
-      return {
-        uid: res.user.uid,
-        email: res.user.email,
-        displayName: res.user.displayName,
-        photoURL: res.user.photoURL
-      };
+      try {
+        const provider = new GoogleAuthProvider();
+        const res = await signInWithPopup(firebaseAuth, provider);
+        return {
+          uid: res.user.uid,
+          email: res.user.email || "google.investor@investiq.com",
+          displayName: res.user.displayName || "Google Investor",
+          photoURL: res.user.photoURL || undefined
+        };
+      } catch (err: any) {
+        throw new Error(formatAuthError(err));
+      }
     } else {
-      await new Promise(r => setTimeout(r, 600));
-      const appUser = { uid: "google-investor", email: "google.investor@gmail.com", displayName: "Google Investor" };
+      await new Promise(r => setTimeout(r, 400));
+      const appUser: AppUser = { uid: "google-investor", email: "google.investor@gmail.com", displayName: "Google Investor" };
       saveMockCurrentUser(appUser);
       return appUser;
     }
@@ -96,20 +141,26 @@ export const authService = {
 
   logout: async (): Promise<void> => {
     if (isLiveFirebase) {
-      await signOut(firebaseAuth);
-    } else {
-      removeMockCurrentUser();
+      try {
+        await signOut(firebaseAuth);
+      } catch (_) {}
     }
+    removeMockCurrentUser();
   },
 
   resetPassword: async (email: string): Promise<void> => {
+    const cleanEmail = email.trim().toLowerCase();
     if (isLiveFirebase) {
-      await sendPasswordResetEmail(firebaseAuth, email);
+      try {
+        await sendPasswordResetEmail(firebaseAuth, cleanEmail);
+      } catch (err: any) {
+        throw new Error(formatAuthError(err));
+      }
     } else {
       await new Promise(r => setTimeout(r, 400));
       const users = getMockUsers();
-      if (!users[email]) {
-        throw new Error("User not found");
+      if (!users[cleanEmail]) {
+        throw new Error("No account found with this email.");
       }
     }
   },
@@ -120,7 +171,7 @@ export const authService = {
         if (user) {
           callback({
             uid: user.uid,
-            email: user.email,
+            email: user.email || "",
             displayName: user.displayName || "Retail Investor"
           });
         } else {
@@ -129,15 +180,7 @@ export const authService = {
       });
     } else {
       const stored = getMockCurrentUser();
-      if (stored) {
-        callback(stored);
-      } else {
-        // Log in default user for instant access in Sandbox
-        const defaultUser = { uid: "investor@example.com", email: "investor@example.com", displayName: "Retail Investor" };
-        saveMockCurrentUser(defaultUser);
-        callback(defaultUser);
-      }
-      // Return dummy unsubscribe function
+      callback(stored || null);
       return () => {};
     }
   }
