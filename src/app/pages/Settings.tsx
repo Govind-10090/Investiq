@@ -8,7 +8,6 @@ export function Settings() {
   const { theme, setTheme } = useThemeStore();
   const [displayName, setDisplayName] = useState(user?.displayName || "Retail Investor");
   const [email, setEmail] = useState(user?.email || "investor@example.com");
-  const [phone, setPhone] = useState("+91 98765 43210");
   
   // Preferences
   const [priceAlerts, setPriceAlerts] = useState(true);
@@ -26,7 +25,6 @@ export function Settings() {
         try {
           const settings = await dbService.getSettings(user.uid);
           if (settings) {
-            if (settings.phone) setPhone(settings.phone);
             if (settings.priceAlerts !== undefined) setPriceAlerts(settings.priceAlerts);
             if (settings.portfolioUpdates !== undefined) setPortfolioUpdates(settings.portfolioUpdates);
             if (settings.marketNews !== undefined) setMarketNews(settings.marketNews);
@@ -45,7 +43,6 @@ export function Settings() {
     if (user?.uid) {
       try {
         await dbService.saveSettings(user.uid, {
-          phone,
           priceAlerts,
           portfolioUpdates,
           marketNews,
@@ -120,15 +117,6 @@ export function Settings() {
                 readOnly
                 value={email}
                 className="w-full h-10 px-4 bg-background/50 border border-border/20 rounded-lg text-xs text-muted-foreground cursor-not-allowed"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full h-10 px-4 bg-background border border-border/40 rounded-lg text-xs text-foreground focus:outline-none"
               />
             </div>
           </div>
