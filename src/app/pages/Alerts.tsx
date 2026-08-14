@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Bell, Plus, Trash2, Check, X, AlertCircle } from "lucide-react";
+import { Bell, Plus, Trash2, Check, X, AlertCircle, BellRing, BellOff } from "lucide-react";
 import { useAlertStore, useMarketStore, useAuthStore } from "../../store";
 
 export function Alerts() {
   const { user } = useAuthStore();
   const { assets } = useMarketStore();
-  const { alerts, fetchAlerts, createAlert, deleteAlert, toggleAlert } = useAlertStore();
+  const { alerts, fetchAlerts, createAlert, deleteAlert, toggleAlert, notifPermission, requestNotifPermission } = useAlertStore();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState("RELIANCE");
@@ -66,12 +66,34 @@ export function Alerts() {
           </p>
         </div>
         
-        <button
-          onClick={() => setIsCreateOpen(true)}
-          className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer"
-        >
-          <Plus className="size-4" /> Create Alert
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Notification Permission Button */}
+          {notifPermission === "default" && (
+            <button
+              onClick={requestNotifPermission}
+              className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              <BellRing className="size-4" /> Enable Notifications
+            </button>
+          )}
+          {notifPermission === "granted" && (
+            <div className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+              <BellRing className="size-3.5" /> Notifications Active
+            </div>
+          )}
+          {notifPermission === "denied" && (
+            <div className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+              <BellOff className="size-3.5" /> Notifications Blocked
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="size-4" /> Create Alert
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

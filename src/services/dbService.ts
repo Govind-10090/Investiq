@@ -156,5 +156,47 @@ export const dbService = {
       db.settings[userId] = { ...db.settings[userId], ...settings };
       saveMockDB(db);
     }
-  }
+  },
+
+  // --- Notes ---
+  getNotes: async (userId: string): Promise<any[]> => {
+    if (isLiveFirebase) {
+      const q = query(collection(firebaseDb, "notes"), where("userId", "==", userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } else {
+      const db = getMockDB();
+      return db.notes[userId] || [];
+    }
+  },
+
+  saveNote: async (userId: string, note: any): Promise<void> => {
+    if (isLiveFirebase) {
+      const docRef = doc(firebaseDb, "notes", note.id);
+      await setDoc(docRef, { ...note, userId });
+    } else {
+      const db = getMockDB();
+      if (!db.notes) db.notes = {};
+      if (!db.notes[userId]) db.notes[userId] = [];
+      const index = db.notes[userId].findIndex((n: any) => n.id === note.id);
+      if (index >= 0) {
+        db.notes[userId][index] = note;
+      } else {
+        db.notes[userId].push(note);
+      }
+      saveMockDB(db);
+    }
+  },
+
+  deleteNote: async (userId: string, noteId: string): Promise<void> => {
+    if (isLiveFirebase) {
+      await deleteDoc(doc(firebaseDb, "notes", noteId));
+    } else {
+      const db = getMockDB();
+      if (db.notes?.[userId]) {
+        db.notes[userId] = db.notes[userId].filter((n: any) => n.id !== noteId);
+        saveMockDB(db);
+      }
+    }
+  },
 };

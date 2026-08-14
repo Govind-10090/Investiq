@@ -12,6 +12,7 @@ import { Watchlist } from "./pages/Watchlist";
 import { Insights } from "./pages/Insights";
 import { News } from "./pages/News";
 import { Alerts } from "./pages/Alerts";
+import { Notes } from "./pages/Notes";
 import { Settings } from "./pages/Settings";
 import { Auth } from "./pages/Auth";
 
@@ -39,6 +40,7 @@ export const router = createHashRouter([
           { path: "insights", Component: Insights },
           { path: "news", Component: News },
           { path: "alerts", Component: Alerts },
+          { path: "notes", Component: Notes },
           { path: "settings", Component: Settings },
         ],
       },

@@ -27,6 +27,8 @@ export function Auth() {
         navigate("/");
       } else {
         await register(email, password, displayName);
+        // Set welcome flag so Dashboard can show the banner
+        sessionStorage.setItem("investiq_just_registered", displayName || "Investor");
         navigate("/");
       }
     } catch (err: any) {

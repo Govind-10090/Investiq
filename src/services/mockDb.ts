@@ -3,6 +3,7 @@ export interface MockDB {
   holdings: Record<string, any[]>;
   alerts: Record<string, any[]>;
   settings: Record<string, any>;
+  notes: Record<string, any[]>;
 }
 
 const MOCK_USERS_KEY = "investiq_mock_users";
@@ -18,7 +19,7 @@ export const getMockDB = (): MockDB => {
       // Ignored
     }
   }
-  return { watchlists: {}, holdings: {}, alerts: {}, settings: {} };
+  return { watchlists: {}, holdings: {}, alerts: {}, settings: {}, notes: {} };
 };
 
 export const saveMockDB = (db: MockDB) => {

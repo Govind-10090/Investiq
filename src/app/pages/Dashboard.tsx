@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { ArrowUpRight, ArrowDownRight, TrendingUp, ShieldCheck, AlertCircle, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, ArrowDownRight, TrendingUp, ShieldCheck, AlertCircle, RefreshCw, PartyPopper, X, Mail } from "lucide-react";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { MarketOverview } from "../components/MarketOverview";
 import { WatchlistPreview } from "../components/WatchlistPreview";
@@ -11,6 +11,16 @@ export function Dashboard() {
   const { user } = useAuthStore();
   const { assets, fetchPrices, updatePricesFromWS, connectionStatus, lastUpdated } = useMarketStore();
   const { holdings, fetchHoldings } = usePortfolioStore();
+  const [welcomeName, setWelcomeName] = useState<string | null>(null);
+
+  // Check for first-time registration welcome flag
+  useEffect(() => {
+    const name = sessionStorage.getItem("investiq_just_registered");
+    if (name) {
+      setWelcomeName(name);
+      sessionStorage.removeItem("investiq_just_registered");
+    }
+  }, []);
 
   // Load and start WS updates
   useEffect(() => {
@@ -109,6 +119,52 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+
+      {/* ✅ Welcome Registration Banner */}
+      {welcomeName && (
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/60 via-emerald-900/30 to-emerald-950/60 p-6 shadow-2xl">
+          {/* Animated glow blobs */}
+          <div className="absolute -top-10 -left-10 w-40 h-40 rounded-full bg-emerald-500/20 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-10 -right-10 w-40 h-40 rounded-full bg-emerald-400/10 blur-3xl pointer-events-none" />
+
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              {/* Icon */}
+              <div className="size-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <PartyPopper className="size-7 text-emerald-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    Welcome to InvestIQ
+                  </span>
+                </div>
+                <h2 className="text-xl font-bold text-foreground">
+                  Hey {welcomeName}, great to have you! 🎉
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1 max-w-lg">
+                  Your account has been created. Start by adding assets to your{" "}
+                  <span className="text-emerald-400 font-medium">Portfolio</span>, setting up a{" "}
+                  <span className="text-emerald-400 font-medium">Watchlist</span>, or creating{" "}
+                  <span className="text-emerald-400 font-medium">Price Alerts</span>.
+                </p>
+                <div className="flex items-center gap-2 mt-3">
+                  <Mail className="size-3.5 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">
+                    A welcome confirmation has been logged to your account.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setWelcomeName(null)}
+              className="shrink-0 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header and Live Status */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -185,11 +241,11 @@ export function Dashboard() {
 
       {/* Portfolio Chart Section */}
       <div className="bg-card border border-border/40 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg text-foreground font-medium">Portfolio Performance</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Historical return curve compared with indices
+              Your portfolio vs NIFTY 50 benchmark — select a range below
             </p>
           </div>
         </div>

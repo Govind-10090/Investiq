@@ -576,7 +576,8 @@ export const getAISignal = async (asset: Asset, history: Candle[]): Promise<AISi
 
 export const streamAssistantResponse = async (
   messages: { role: string; content: string }[],
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  context?: { holdings: any[]; assets: any[] }
 ): Promise<void> => {
   if (hasOpenAIKey) {
     try {
@@ -624,23 +625,82 @@ export const streamAssistantResponse = async (
     }
   }
 
-  // Streaming Text Simulation (SSE mock)
-  const lastMessage = messages[messages.length - 1]?.content.toLowerCase() || "";
+  // --- Rich Context-Aware Simulator (no API key required) ---
+  const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0]?.content.toLowerCase() || "";
+  const holdings = context?.holdings || [];
+  const assets = context?.assets || [];
+
+  // Compute portfolio summary for rich responses
+  const totalValue = holdings.reduce((s: number, h: any) => s + h.value, 0);
+  const totalPnl = holdings.reduce((s: number, h: any) => s + ((h.currentPrice - h.avgPrice) * h.shares), 0);
+  const pnlPct = totalValue > 0 ? ((totalPnl / (totalValue - totalPnl)) * 100).toFixed(2) : "0.00";
+
+  // Pull specific live asset prices from context
+  const getPrice = (sym: string) => assets.find((a: any) => a.symbol === sym)?.price;
+  const getChange = (sym: string) => assets.find((a: any) => a.symbol === sym)?.change;
+  const niftyPrice = getPrice("NIFTY_50") ?? 22450.3;
+  const niftyChange = getChange("NIFTY_50") ?? 0.65;
+  const sensexPrice = getPrice("SENSEX") ?? 73850.5;
+  const btcPrice = getPrice("BTC") ?? 67450;
+  const btcChange = getChange("BTC") ?? 2.45;
+  const ethPrice = getPrice("ETH") ?? 3510;
+
   let fullResponse = "";
 
-  if (lastMessage.includes("portfolio")) {
-    fullResponse = "Based on a review of your current portfolio, you have heavy exposure to Indian Blue-chip equities (Reliance and TCS) representing 65% of allocation, and 35% in major Cryptocurrencies (Bitcoin and Solana).\n\n**Key Observations:**\n1. **Risk Profile:** Your portfolio risk score is High, driven by crypto volatility.\n2. **Health Score:** 85/100, which is strong. Holdings are high-quality, high-volume assets.\n3. **Recommendation:** You may want to diversify by adding 10-15% into Forex or Liquid Mutual Funds to hedge during crypto market drawdowns.";
-  } else if (lastMessage.includes("strategy") || lastMessage.includes("backtest")) {
-    fullResponse = "Here are a few high-performing strategy suggestions:\n\n1. **RSI Mean Reversion (Crypto):** Buy BTC/ETH when daily RSI falls below 30, sell when it crosses above 70. Backtests show a 68% Win Rate.\n2. **EMA Golden Cross (Stocks):** Enter a long trade when the 50-day EMA crosses above the 200-day EMA. This works exceptionally well on NSE stocks like RELIANCE for catching long-term macro waves.";
-  } else if (lastMessage.includes("nifty") || lastMessage.includes("market")) {
-    fullResponse = "NIFTY 50 is trading at 22,450.30, up +0.65% today. Market sentiment remains bullish ahead of the RBI interest rate decision. IT and Energy stocks are leading the rally, while Financial services are experiencing mild consolidation. Technically, 22,200 remains a strong support zone, with major psychological resistance at 22,600.";
+  const isAbout = (...keywords: string[]) => keywords.some(k => lastUserMsg.includes(k));
+
+  if (isAbout("portfolio", "allocation", "holding", "my position", "my invest")) {
+    if (holdings.length === 0) {
+      fullResponse = `You haven't added any holdings to your portfolio yet.\n\n**To get started:**\n1. Navigate to the **Portfolio** page using the sidebar\n2. Click **"Add Holding"** and search for any stock, crypto, or mutual fund\n3. Enter your purchase price and quantity\n\nOnce you've added holdings, I can analyze your risk profile, sector diversification, and P&L performance in real-time.`;
+    } else {
+      const topHolding = holdings.reduce((a: any, b: any) => a.value > b.value ? a : b);
+      const sectorMap: Record<string, number> = {};
+      holdings.forEach((h: any) => {
+        const sector = h.sector || h.type || "Other";
+        sectorMap[sector] = (sectorMap[sector] || 0) + h.value;
+      });
+      const topSector = Object.entries(sectorMap).sort((a, b) => b[1] - a[1])[0];
+      const topSectorPct = ((topSector[1] / totalValue) * 100).toFixed(1);
+
+      fullResponse = `## Portfolio Analysis\n\n**Total Value:** ₹${totalValue.toLocaleString("en-IN")} | **P&L:** ${totalPnl >= 0 ? "+" : ""}₹${Math.abs(totalPnl).toFixed(2)} (${pnlPct}%)\n\n**Key Observations:**\n\n- **Largest Holding:** ${topHolding.name} (${topHolding.symbol}) at ₹${topHolding.value.toLocaleString("en-IN")} — ${((topHolding.value / totalValue) * 100).toFixed(1)}% of portfolio\n- **Top Sector Concentration:** ${topSector[0]} at ${topSectorPct}% of allocation\n- **Number of Holdings:** ${holdings.length} positions across your portfolio\n- **Health Score:** ${Math.min(100, Math.max(50, 85 - (parseFloat(topSectorPct) > 60 ? 15 : 0))).toFixed(0)}/100\n\n**Recommendations:**\n${parseFloat(topSectorPct) > 50 ? `⚠️ Your ${topSector[0]} exposure is high at ${topSectorPct}%. Consider diversifying into other sectors to reduce concentration risk.` : `✅ Your sector diversification is healthy.`}\n${totalPnl >= 0 ? "✅ Overall portfolio is in profit — consider taking partial profits on large gainers." : "⚠️ Portfolio is currently at a loss — review stop-loss levels and consider averaging down on quality names."}`;
+    }
+  } else if (isAbout("backtest", "strategy", "rsi", "ema", "sma", "golden cross", "mean reversion")) {
+    fullResponse = `## Algorithmic Strategy Suggestions\n\nHere are battle-tested strategies for the Indian market:\n\n1. **RSI Mean Reversion (Crypto/High-vol Stocks)**\n   - *Entry:* Buy when 14-day RSI drops below **30** (oversold)\n   - *Exit:* Sell when RSI crosses above **70** (overbought)\n   - *Backtest Win Rate:* ~**68%** on BTC/ETH (2022–2024)\n   - *Best on:* BTC (₹${btcPrice.toLocaleString("en-IN")}), ETH, SOL\n\n2. **EMA Golden Cross (NSE Bluechips)**\n   - *Entry:* 50-day EMA crosses above 200-day EMA\n   - *Exit:* 50-day EMA crosses below 200-day EMA (death cross)\n   - *Backtest CAGR:* ~**18–22%** on RELIANCE, TCS\n   - *Best on:* NIFTY 50 components during trending markets\n\n3. **Bollinger Band Squeeze (Mutual Funds)**\n   - *Entry:* Price breaks above upper Bollinger Band with volume surge\n   - *Exit:* Price reverts to 20-day SMA\n   - *Best on:* SBI Small Cap, Axis Bluechip during momentum phases\n\nYou can configure and run any of these in the **Backtesting Laboratory** tab on the Insights page.`;
+  } else if (isAbout("nifty", "sensex", "market", "index", "indian market", "bse", "nse")) {
+    const niftyDir = niftyChange >= 0 ? "up" : "down";
+    fullResponse = `## Market Overview (Live)\n\n- **NIFTY 50:** ₹${niftyPrice.toLocaleString("en-IN")} ${niftyChange >= 0 ? "📈" : "📉"} **${niftyChange >= 0 ? "+" : ""}${niftyChange.toFixed(2)}%** today\n- **SENSEX:** ₹${sensexPrice.toLocaleString("en-IN")}\n\n**Sector Rotation:**\nMarket sentiment is currently **${niftyChange >= 0 ? "bullish" : "bearish"}** — NIFTY is ${niftyDir} ${Math.abs(niftyChange).toFixed(2)}% today. IT and Energy sectors are ${niftyChange >= 0 ? "leading the rally" : "under pressure"}, while FMCG is showing resilience as a defensive play.\n\n**Key Levels:**\n- **Support:** ${(niftyPrice * 0.99).toFixed(0)} (50-DMA)\n- **Resistance:** ${(niftyPrice * 1.012).toFixed(0)} (psychological round number)\n\n**RBI Outlook:** Repo rate steady at 6.5%. Market expects dovish signals if CPI stays below 5%. Watch for IT sector earnings in the upcoming quarter.`;
+  } else if (isAbout("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol", "xrp", "dogecoin")) {
+    fullResponse = `## Crypto Market Snapshot\n\n- **Bitcoin (BTC):** ₹${btcPrice.toLocaleString("en-IN")} ${btcChange >= 0 ? "📈" : "📉"} **${btcChange >= 0 ? "+" : ""}${btcChange.toFixed(2)}%**\n- **Ethereum (ETH):** ₹${ethPrice.toLocaleString("en-IN")}\n\n**Analysis:**\n${btcChange > 3 ? "BTC is showing strong bullish momentum. Spot ETF inflows are accelerating globally, and on-chain metrics indicate rising active addresses. A break above $70,000 would confirm the next leg up." : btcChange < -3 ? "BTC is under selling pressure. Watch for support at key demand zones around $60,000–62,000. RSI is approaching oversold territory — this could be a dip-buying opportunity for long-term holders." : "BTC is consolidating in a narrow band. Wait for a decisive breakout above local resistance or a retest of key support before committing new capital."}\n\n**For Indian Investors:**\nNote that crypto gains in India are taxed at **30% flat** with no loss offsetting allowed. Factor this into your entry/exit decisions and always use stop-losses on volatile positions.`;
+  } else if (isAbout("news", "headline", "latest", "rbi", "sebi", "recent")) {
+    fullResponse = `## Latest Market Intelligence\n\n📰 **Top Financial Headlines:**\n\n1. **RBI Policy** — Repo rate held at 6.5% for the 8th consecutive time. MPC focused on bringing inflation down to 4% target. Hawkish tilt remains.\n\n2. **NIFTY 50** — Trading at ₹${niftyPrice.toLocaleString("en-IN")}, ${niftyChange >= 0 ? "up" : "down"} ${Math.abs(niftyChange).toFixed(2)}% today. IT stocks outperforming; banking stocks seeing mixed action.\n\n3. **FII Activity** — Foreign Institutional Investors have been net ${niftyChange >= 0 ? "buyers" : "sellers"} in the past week. DII flows remain strong, providing support to the market.\n\n4. **Crypto Regulation** — SEBI is reviewing a framework for crypto asset regulation in India. Clarity expected in the next 2–3 quarters.\n\n5. **Earnings Season** — Q1 FY26 results rolling in. IT sector showing pressure from slowing discretionary tech spends globally.\n\n**Sentiment:** ${niftyChange >= 0 ? "Broadly positive 🟢" : "Cautiously negative 🔴"} — volatility expected to remain elevated around global macro events.`;
+  } else if (isAbout("risk", "hedge", "diversif", "safe", "protect")) {
+    fullResponse = `## Risk Management & Hedging Strategies\n\n${holdings.length > 0 ? `**Your Portfolio Risk Profile:**\n- Total Value: ₹${totalValue.toLocaleString("en-IN")}\n- P&L: ${totalPnl >= 0 ? "+" : ""}₹${totalPnl.toFixed(2)} (${pnlPct}%)\n\n` : ""}**Key Risk Management Principles for Indian Investors:**\n\n1. **Asset Allocation Rule:** No single stock should exceed **10–15%** of your portfolio. Rebalance quarterly.\n\n2. **Stop-Loss Discipline:** Set trailing stop-losses at **5–8%** below entry for stocks, and **10–15%** for crypto to avoid catastrophic drawdowns.\n\n3. **Diversification Buckets:**\n   - 60% Large-cap stocks (NIFTY 50 components)\n   - 20% Mid/Small-cap for alpha\n   - 10% Crypto (high risk, high reward)\n   - 10% Liquid Mutual Funds or Gold (hedge)\n\n4. **Currency Hedge:** If holding US-listed assets or crypto, monitor USD/INR (currently ₹83.42). A weakening rupee amplifies your dollar-denominated gains.\n\n5. **Options for Hedging:** NIFTY Put options can be used to hedge equity portfolios during uncertain macro periods (e.g., budget, RBI policy, US Fed decisions).`;
+  } else if (isAbout("forex", "rupee", "dollar", "usd", "eur", "gbp", "currency")) {
+    const usdInr = getPrice("USD/INR") ?? 83.42;
+    const eurInr = getPrice("EUR/INR") ?? 90.25;
+    fullResponse = `## Forex Market Analysis\n\n- **USD/INR:** ₹${usdInr.toFixed(4)}\n- **EUR/INR:** ₹${eurInr.toFixed(4)}\n\n**Rupee Outlook:**\nThe INR is currently trading at ₹${usdInr.toFixed(2)}/USD. ${usdInr > 84 ? "The rupee is under pressure from strong dollar demand and FII outflows. RBI interventions may cap excessive depreciation near ₹84.50." : "The rupee is relatively stable. Strong remittances and DII buying are providing support."}\n\n**Impact on Investments:**\n- 📈 A **weaker rupee** benefits IT exporters (TCS, Infosys, Wipro) — their USD revenues translate into more INR\n- 📉 A **weaker rupee** increases import costs — negative for oil-dependent sectors like aviation and chemicals\n- 🌐 For crypto investors: Bitcoin price in INR = $${btcPrice.toLocaleString()} × ₹${usdInr.toFixed(2)} ≈ ₹${(btcPrice * usdInr).toLocaleString("en-IN")}`;
+  } else if (isAbout("mutual fund", "sip", "elss", "nav", "lump")) {
+    fullResponse = `## Mutual Fund Insights\n\n**Top Recommended Funds by Category:**\n\n| Fund | Category | NAV | 1Y Return |\n|------|----------|-----|----------|\n| Parag Parikh Flexi Cap | Flexi Cap | ₹65.80 | +28.4% |\n| Mirae Asset Large Cap | Large Cap | ₹85.20 | +19.2% |\n| SBI Small Cap | Small Cap | ₹96.80 | +35.6% |\n| HDFC Mid-Cap Opportunities | Mid Cap | ₹178.40 | +31.8% |\n| ICICI Prudential Tech | Sectoral | ₹145.60 | +22.1% |\n\n**SIP Strategy:**\n- Start with a minimum **₹1,000/month** per fund\n- Prefer **monthly SIPs** over lump-sum to average out market volatility (Rupee Cost Averaging)\n- ELSS funds (Axis ELSS, Mirae ELSS) offer **₹1.5L tax deduction** under Sec 80C\n\n**Portfolio Recommendation:**\n60% Large Cap + 25% Mid/Small Cap + 15% International/Hybrid for a balanced long-term allocation.`;
   } else {
-    fullResponse = `Hello! I am your InvestIQ AI Co-pilot. I can analyze your portfolio holdings, evaluate technical market setups, summarize financial news, or help you backtest rules. How can I help you optimize your investments today?`;
+    // Generic fallback — but still contextual
+    const hasPortfolio = holdings.length > 0;
+    fullResponse = `Hello! I'm your **InvestIQ AI Co-pilot** 🤖\n\n${hasPortfolio ? `I can see your portfolio with **${holdings.length} holdings** worth ₹${totalValue.toLocaleString("en-IN")}. ` : ""}I'm ready to help you with:\n\n- 📊 **Portfolio Analysis** — "Review my portfolio risk and allocation"\n- 📈 **Market Insights** — "What is NIFTY doing today?" or "Analyze BTC"\n- ⚙️ **Backtesting** — "Suggest a strategy for RELIANCE"\n- 📰 **News Digest** — "Summarize the latest market news"\n- 🛡️ **Risk Management** — "How do I hedge my portfolio?"\n- 💱 **Forex** — "What's the USD/INR outlook?"\n- 🏦 **Mutual Funds** — "Best SIP funds for long-term wealth"\n\nWhat would you like to explore today?`;
   }
 
-  const chunks = fullResponse.split(" ");
-  for (let i = 0; i < chunks.length; i++) {
-    await new Promise(r => setTimeout(r, Math.random() * 80 + 30));
-    onChunk(chunks[i] + " ");
-  }
+  // Smooth character-by-character streaming with natural typing rhythm
+  const streamText = async (text: string) => {
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      onChunk(char);
+      // Vary delay: faster for spaces/punctuation, slight pause after sentence-end
+      let delay = 8 + Math.random() * 10;
+      if (char === " ") delay = 4 + Math.random() * 6;
+      else if (char === "\n") delay = 20 + Math.random() * 20;
+      else if (char === "." || char === "!" || char === "?") delay = 40 + Math.random() * 30;
+      else if (char === ",") delay = 20 + Math.random() * 15;
+      await new Promise(r => setTimeout(r, delay));
+    }
+  };
+
+  await streamText(fullResponse);
 };

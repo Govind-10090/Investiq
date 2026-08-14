@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageSquareText, Send, Trash, Sparkles, Brain, Check, RefreshCw, X } from "lucide-react";
+import { Send, Trash, Sparkles, Brain, RefreshCw, X } from "lucide-react";
 import { useAssistantStore } from "../../store";
+import { usePortfolioStore } from "../../store";
+import { useMarketStore } from "../../store";
+
 
 interface AIAssistantProps {
   isOpen: boolean;
@@ -9,6 +12,9 @@ interface AIAssistantProps {
 
 export function AIAssistant({ isOpen, onClose }: AIAssistantProps) {
   const { messages, isStreaming, sendMessage, clearChat } = useAssistantStore();
+  const holdings = usePortfolioStore((s) => s.holdings);
+  const assets = useMarketStore((s) => s.assets);
+
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -17,18 +23,20 @@ export function AIAssistant({ isOpen, onClose }: AIAssistantProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const getContext = () => ({ holdings, assets });
+
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!inputText.trim() || isStreaming) return;
 
     const query = inputText.trim();
     setInputText("");
-    await sendMessage(query);
+    await sendMessage(query, getContext());
   };
 
   const handleSuggestionClick = async (promptText: string) => {
     if (isStreaming) return;
-    await sendMessage(promptText);
+    await sendMessage(promptText, getContext());
   };
 
   if (!isOpen) return null;

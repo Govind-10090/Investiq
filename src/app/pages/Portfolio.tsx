@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { TrendingUp, TrendingDown, Plus, Minus, Briefcase, PlusCircle, Trash } from "lucide-react";
+import { TrendingUp, TrendingDown, Plus, Minus, Briefcase, PlusCircle, Trash, Search, ChevronRight } from "lucide-react";
 import { usePortfolioStore, useMarketStore, useAuthStore } from "../../store";
 import { LivePrice } from "../components/LivePrice";
 
@@ -10,9 +10,11 @@ export function Portfolio() {
   const { holdings, fetchHoldings, addHolding, sellHolding, deleteHolding } = usePortfolioStore();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [selectedAssetSymbol, setSelectedAssetSymbol] = useState("RELIANCE");
+  const [selectedAssetSymbol, setSelectedAssetSymbol] = useState("");
   const [sharesInput, setSharesInput] = useState<number>(10);
-  const [priceInput, setPriceInput] = useState<number>(2456.75);
+  const [priceInput, setPriceInput] = useState<number>(0);
+  const [assetSearchQuery, setAssetSearchQuery] = useState("");
+  const [addStep, setAddStep] = useState<"pick" | "fill">("pick");
 
   useEffect(() => {
     fetchPrices();
@@ -31,6 +33,7 @@ export function Portfolio() {
     if (asset) {
       setPriceInput(asset.price);
     }
+    setAddStep("fill");
   };
 
   const handleSubmitTransaction = async (e: React.FormEvent) => {
@@ -144,7 +147,7 @@ export function Portfolio() {
         </div>
         
         <button
-          onClick={() => setIsAddOpen(true)}
+          onClick={() => { setIsAddOpen(true); setAddStep("pick"); setSelectedAssetSymbol(""); setAssetSearchQuery(""); }}
           className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
         >
           <PlusCircle className="size-4" /> Add Asset Transaction
@@ -320,68 +323,140 @@ export function Portfolio() {
       {/* Transaction Modal Panel */}
       {isAddOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50 p-4">
-          <div className="w-full max-w-sm bg-card border border-border/40 rounded-xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-md text-foreground font-medium flex items-center gap-2">
-                <Plus className="size-4" /> Add Asset Buy Position
-              </h3>
-              <button onClick={() => setIsAddOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
-            </div>
+          <div className="w-full max-w-md bg-card border border-border/40 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
             
-            <form onSubmit={handleSubmitTransaction} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Select Asset</label>
-                <select
-                  value={selectedAssetSymbol}
-                  onChange={(e) => handleAssetSelect(e.target.value)}
-                  className="w-full bg-background border border-border/40 rounded px-2.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  {assets.map(a => (
-                    <option key={a.symbol} value={a.symbol}>{a.symbol} - {a.name} ({a.type})</option>
-                  ))}
-                </select>
-              </div>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border/40">
+              <h3 className="text-md text-foreground font-medium flex items-center gap-2">
+                <Plus className="size-4 text-emerald-400" />
+                {addStep === "pick" ? "Select Asset" : `Add Position — ${selectedAssetSymbol}`}
+              </h3>
+              <button
+                onClick={() => setIsAddOpen(false)}
+                className="text-xs text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted"
+              >
+                ✕
+              </button>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Quantity Purchased (Shares / Units)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  required
-                  value={sharesInput}
-                  onChange={(e) => setSharesInput(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-background border border-border/40 rounded px-2.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
+            {/* Step 1: Asset Picker */}
+            {addStep === "pick" && (
+              <div className="flex flex-col gap-3 p-5 overflow-hidden flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search symbol or name..."
+                    value={assetSearchQuery}
+                    onChange={(e) => setAssetSearchQuery(e.target.value)}
+                    autoFocus
+                    className="w-full h-9 pl-9 pr-4 bg-background border border-border/40 rounded-lg text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Purchase Price per Share (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={priceInput}
-                  onChange={(e) => setPriceInput(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-background border border-border/40 rounded px-2.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <div className="flex-1 overflow-y-auto divide-y divide-border/20 border border-border/30 rounded-lg bg-background/30" style={{ maxHeight: 320 }}>
+                  {assets
+                    .filter(a =>
+                      a.symbol.toLowerCase().includes(assetSearchQuery.toLowerCase()) ||
+                      a.name.toLowerCase().includes(assetSearchQuery.toLowerCase())
+                    )
+                    .map((asset) => (
+                      <button
+                        key={asset.symbol}
+                        onClick={() => handleAssetSelect(asset.symbol)}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors text-left"
+                      >
+                        <div>
+                          <p className="text-xs font-bold text-foreground tracking-wider uppercase">{asset.symbol}</p>
+                          <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{asset.name}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-xs font-semibold text-foreground">₹{asset.price.toLocaleString()}</p>
+                            <p className={`text-[10px] font-medium ${asset.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                              {asset.change >= 0 ? "+" : ""}{asset.change.toFixed(2)}%
+                            </p>
+                          </div>
+                          <ChevronRight className="size-3.5 text-muted-foreground" />
+                        </div>
+                      </button>
+                    ))}
+                </div>
               </div>
+            )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddOpen(false)}
-                  className="px-3.5 py-1.5 bg-muted hover:bg-accent text-xs text-foreground rounded font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-xs text-white rounded font-medium cursor-pointer"
-                >
-                  Save Transaction
-                </button>
-              </div>
-            </form>
+            {/* Step 2: Fill Details */}
+            {addStep === "fill" && (
+              <form onSubmit={handleSubmitTransaction} className="flex flex-col gap-4 p-5">
+                {/* Selected Asset Summary */}
+                {(() => {
+                  const asset = assets.find(a => a.symbol === selectedAssetSymbol);
+                  return asset ? (
+                    <div className="flex items-center justify-between p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                      <div>
+                        <p className="text-sm font-bold text-foreground uppercase tracking-wider">{asset.symbol}</p>
+                        <p className="text-xs text-muted-foreground">{asset.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-emerald-400">₹{asset.price.toLocaleString()}</p>
+                        <p className={`text-xs font-medium ${asset.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {asset.change >= 0 ? "+" : ""}{asset.change.toFixed(2)}%
+                        </p>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Quantity Purchased (Shares / Units)</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    required
+                    value={sharesInput}
+                    onChange={(e) => setSharesInput(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-background border border-border/40 rounded px-2.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Purchase Price per Share (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-background border border-border/40 rounded px-2.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex justify-between gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddStep("pick")}
+                    className="px-3.5 py-1.5 bg-muted hover:bg-accent text-xs text-foreground rounded font-medium cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddOpen(false)}
+                      className="px-3.5 py-1.5 bg-muted hover:bg-accent text-xs text-foreground rounded font-medium cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-xs text-white rounded font-medium cursor-pointer"
+                    >
+                      Save Transaction
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

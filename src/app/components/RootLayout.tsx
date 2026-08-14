@@ -3,6 +3,7 @@ import { Outlet, NavLink } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { AIAssistant } from "./AIAssistant";
+import { ToastContainer } from "./ToastContainer";
 import { BrainCircuit, LayoutDashboard, TrendingUp, Briefcase, Star, Lightbulb } from "lucide-react";
 import { useMarketStore, useThemeStore } from "../../store";
 import { cn } from "../utils/cn";
@@ -60,6 +61,9 @@ export function RootLayout() {
 
         {/* AI Assistant Drawer */}
         <AIAssistant isOpen={isAiOpen} onClose={() => setIsAiOpen(false)} />
+
+        {/* Global Toast Notifications */}
+        <ToastContainer />
       </div>
 
       {/* Mobile Bottom Navigation Bar — hidden on lg+ */}

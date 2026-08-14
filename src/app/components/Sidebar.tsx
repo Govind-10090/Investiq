@@ -12,6 +12,7 @@ import {
   Newspaper, 
   Bell, 
   Settings,
+  NotebookPen,
   X
 } from "lucide-react";
 import { cn } from "../utils/cn";
@@ -28,6 +29,7 @@ const navItems = [
   { to: "/insights", icon: Lightbulb, label: "Insights" },
   { to: "/news", icon: Newspaper, label: "News" },
   { to: "/alerts", icon: Bell, label: "Alerts" },
+  { to: "/notes", icon: NotebookPen, label: "Notes" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
