@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { TrendingUp, TrendingDown, Plus, Minus, Briefcase, PlusCircle, Trash, Search, ChevronRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Plus, Minus, Briefcase, PlusCircle, Trash, Search, ChevronRight, History } from "lucide-react";
 import { usePortfolioStore, useMarketStore, useAuthStore } from "../../store";
 import { LivePrice } from "../components/LivePrice";
 
 export function Portfolio() {
   const { user } = useAuthStore();
   const { assets, fetchPrices } = useMarketStore();
-  const { holdings, fetchHoldings, addHolding, sellHolding, deleteHolding } = usePortfolioStore();
+  const { holdings, transactions, fetchHoldings, addHolding, sellHolding, deleteHolding } = usePortfolioStore();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedAssetSymbol, setSelectedAssetSymbol] = useState("");
@@ -319,6 +319,76 @@ export function Portfolio() {
           </table>
         </div>
       </div>
+
+      {/* Transaction History Audit Log */}
+      {transactions && transactions.length > 0 && (
+        <div className="bg-card border border-border/40 rounded-xl overflow-hidden shadow-xl">
+          <div className="p-5 border-b border-border/40 bg-muted flex items-center justify-between">
+            <h2 className="text-md text-foreground font-medium flex items-center gap-2">
+              <History className="size-4 text-emerald-400" />
+              Transaction History (Stored in Firebase)
+            </h2>
+            <span className="text-xs text-muted-foreground font-medium">
+              {transactions.length} record{transactions.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr className="border-b border-border/40">
+                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date & Time</th>
+                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
+                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Asset</th>
+                  <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quantity</th>
+                  <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Execution Price</th>
+                  <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {transactions.map((tx) => {
+                  const isBuy = tx.type === "buy";
+                  const total = tx.shares * tx.price;
+                  return (
+                    <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4 text-xs text-muted-foreground font-medium">
+                        {new Date(tx.date).toLocaleString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit"
+                        })}
+                      </td>
+                      <td className="p-4">
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                          isBuy 
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25" 
+                            : "bg-red-500/10 text-red-400 border border-red-500/25"
+                        }`}>
+                          {tx.type}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-sm font-semibold text-foreground uppercase">{tx.symbol}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-[160px]">{tx.name}</p>
+                      </td>
+                      <td className="p-4 text-right text-sm text-foreground font-medium">
+                        {tx.shares.toLocaleString()}
+                      </td>
+                      <td className="p-4 text-right text-sm text-foreground font-medium">
+                        {formatCurrency(tx.price)}
+                      </td>
+                      <td className="p-4 text-right text-sm font-semibold text-foreground">
+                        {formatCurrency(total)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Transaction Modal Panel */}
       {isAddOpen && (

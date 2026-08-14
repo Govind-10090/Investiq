@@ -8,6 +8,16 @@ import {
 } from "../api/clients";
 import { wsManager, ConnectionStatus } from "../websocket/manager";
 import { useAlertStore } from "./useAlertStore";
+import { dbService } from "../firebase/config";
+
+// Debounce timer for continuous asset persistence to Firestore
+let syncTimer: any = null;
+const debouncedSyncToFirebase = (assets: Asset[]) => {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    dbService.saveMarketAssets(assets);
+  }, 4000);
+};
 
 export interface MarketState {
   assets: Asset[];
@@ -27,8 +37,17 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   connectionStatus: "disconnected",
   latency: 0,
   lastUpdated: new Date(),
+
   fetchPrices: async () => {
-    set({ loading: get().assets.length === 0, error: null });
+    // 1. If we have no assets yet, load cached asset snapshot from Firebase/local cache first for instant UI
+    if (get().assets.length === 0) {
+      set({ loading: true, error: null });
+      const cached = await dbService.getMarketAssets();
+      if (cached && cached.length > 0) {
+        set({ assets: cached, loading: false });
+      }
+    }
+
     try {
       const [stocks, cryptos, forex, mutualFunds] = await Promise.all([
         getStockData(),
@@ -36,15 +55,21 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         getForexPrices(),
         getMutualFundsData()
       ]);
+
+      const combinedAssets = [...stocks, ...cryptos, ...forex, ...mutualFunds];
       set({ 
-        assets: [...stocks, ...cryptos, ...forex, ...mutualFunds], 
+        assets: combinedAssets, 
         loading: false,
         lastUpdated: new Date()
       });
+
+      // Continuously persist latest asset data to Firebase database
+      dbService.saveMarketAssets(combinedAssets);
     } catch (e: any) {
       set({ error: "Failed to fetch market rates", loading: false });
     }
   },
+
   updatePricesFromWS: () => {
     const unsubStatus = wsManager.onStatusChange((status) => {
       set({ 
@@ -95,6 +120,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         }
 
         if (!hasChanges) return {};
+
+        // Trigger continuous asset persistence to Firebase database
+        debouncedSyncToFirebase(assets);
 
         setTimeout(() => {
           useAlertStore.getState().checkAlerts(assets);

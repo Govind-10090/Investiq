@@ -1,9 +1,11 @@
 export interface MockDB {
   watchlists: Record<string, any[]>;
   holdings: Record<string, any[]>;
+  transactions: Record<string, any[]>;
   alerts: Record<string, any[]>;
   settings: Record<string, any>;
   notes: Record<string, any[]>;
+  marketAssets: any[];
 }
 
 const MOCK_USERS_KEY = "investiq_mock_users";
@@ -14,12 +16,21 @@ export const getMockDB = (): MockDB => {
   const data = localStorage.getItem(MOCK_DB_KEY);
   if (data) {
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return {
+        watchlists: parsed.watchlists || {},
+        holdings: parsed.holdings || {},
+        transactions: parsed.transactions || {},
+        alerts: parsed.alerts || {},
+        settings: parsed.settings || {},
+        notes: parsed.notes || {},
+        marketAssets: parsed.marketAssets || [],
+      };
     } catch (e) {
       // Ignored
     }
   }
-  return { watchlists: {}, holdings: {}, alerts: {}, settings: {}, notes: {} };
+  return { watchlists: {}, holdings: {}, transactions: {}, alerts: {}, settings: {}, notes: {}, marketAssets: [] };
 };
 
 export const saveMockDB = (db: MockDB) => {

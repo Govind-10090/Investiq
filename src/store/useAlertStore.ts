@@ -7,6 +7,7 @@ import { useToastStore } from "./useToastStore";
 export interface AlertState {
   alerts: PriceAlert[];
   loading: boolean;
+  activeSubscription: (() => void) | null;
   triggeredAlerts: string[];
   notifPermission: NotificationPermission;
   fetchAlerts: (uid: string) => Promise<void>;
@@ -21,17 +22,31 @@ export interface AlertState {
 export const useAlertStore = create<AlertState>((set, get) => ({
   alerts: [],
   loading: false,
+  activeSubscription: null,
   triggeredAlerts: [],
   notifPermission: typeof Notification !== "undefined" ? Notification.permission : "default",
+
   fetchAlerts: async (uid) => {
     set({ loading: true });
+
+    if (get().activeSubscription) {
+      get().activeSubscription!();
+    }
+
     try {
       const alerts = await dbService.getAlerts(uid);
       set({ alerts, loading: false });
+
+      // Continuous Firestore Realtime Synchronization
+      const unsub = dbService.subscribeAlerts(uid, (newAlerts) => {
+        set({ alerts: newAlerts });
+      });
+      set({ activeSubscription: unsub });
     } catch (e) {
       set({ loading: false });
     }
   },
+
   createAlert: async (uid, symbol, assetType, condition, value) => {
     const newAlert: PriceAlert = {
       id: `alert-${Date.now()}`,
@@ -43,33 +58,43 @@ export const useAlertStore = create<AlertState>((set, get) => ({
       isTriggered: false,
       createdAt: new Date().toISOString()
     };
-    await dbService.saveAlert(uid, newAlert);
+    // Instant optimistic update
     set({ alerts: [...get().alerts, newAlert] });
+    // Continuous persistence
+    await dbService.saveAlert(uid, newAlert);
   },
+
   deleteAlert: async (uid, alertId) => {
-    await dbService.deleteAlert(uid, alertId);
+    // Instant optimistic update
     set({ alerts: get().alerts.filter(a => a.id !== alertId) });
+    // Continuous persistence
+    await dbService.deleteAlert(uid, alertId);
   },
+
   toggleAlert: async (uid, alertId) => {
     const alert = get().alerts.find(a => a.id === alertId);
     if (alert) {
       const updated = { ...alert, isActive: !alert.isActive };
-      await dbService.saveAlert(uid, updated);
+      // Instant optimistic update
       set({ alerts: get().alerts.map(a => a.id === alertId ? updated : a) });
+      // Continuous persistence
+      await dbService.saveAlert(uid, updated);
     }
   },
+
   requestNotifPermission: async () => {
     if (typeof Notification === "undefined") return;
     const permission = await Notification.requestPermission();
     set({ notifPermission: permission });
   },
+
   checkAlerts: (prices) => {
     const active = get().alerts.filter(a => a.isActive && !a.isTriggered);
     if (active.length === 0) return;
 
     let triggered: string[] = [];
     const authUser = useAuthStore.getState().user;
-    const uid = authUser?.uid;
+    const uid = authUser?.uid || "guest";
     const { addToast } = useToastStore.getState();
 
     const updatedAlerts = get().alerts.map(alert => {

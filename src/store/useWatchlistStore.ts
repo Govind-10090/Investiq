@@ -5,6 +5,7 @@ import { dbService } from "../firebase/config";
 export interface WatchlistState {
   watchlists: Watchlist[];
   loading: boolean;
+  activeSubscription: (() => void) | null;
   fetchWatchlists: (uid: string) => Promise<void>;
   createWatchlist: (uid: string, name: string) => Promise<void>;
   addAsset: (uid: string, listId: string, symbol: string) => Promise<void>;
@@ -16,8 +17,15 @@ export interface WatchlistState {
 export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   watchlists: [],
   loading: false,
+  activeSubscription: null,
+
   fetchWatchlists: async (uid) => {
     set({ loading: true });
+
+    if (get().activeSubscription) {
+      get().activeSubscription!();
+    }
+
     try {
       let lists = await dbService.getWatchlists(uid);
       if (lists.length === 0) {
@@ -32,10 +40,17 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
         lists = [defaultList];
       }
       set({ watchlists: lists, loading: false });
+
+      // Continuous Firestore Realtime Synchronization
+      const unsub = dbService.subscribeWatchlists(uid, (newLists) => {
+        set({ watchlists: newLists });
+      });
+      set({ activeSubscription: unsub });
     } catch (e) {
       set({ loading: false });
     }
   },
+
   createWatchlist: async (uid, name) => {
     const newList: Watchlist = {
       id: `watchlist-${Date.now()}`,
@@ -43,29 +58,41 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
       assets: [],
       isPinned: false
     };
-    await dbService.saveWatchlist(uid, newList);
+    // Instant optimistic update
     set({ watchlists: [...get().watchlists, newList] });
+    // Continuous persistence
+    await dbService.saveWatchlist(uid, newList);
   },
+
   addAsset: async (uid, listId, symbol) => {
     const list = get().watchlists.find(w => w.id === listId);
     if (list && !list.assets.includes(symbol)) {
       const updated = { ...list, assets: [...list.assets, symbol] };
-      await dbService.saveWatchlist(uid, updated);
+      // Instant optimistic update
       set({ watchlists: get().watchlists.map(w => w.id === listId ? updated : w) });
+      // Continuous persistence
+      await dbService.saveWatchlist(uid, updated);
     }
   },
+
   removeAsset: async (uid, listId, symbol) => {
     const list = get().watchlists.find(w => w.id === listId);
     if (list) {
       const updated = { ...list, assets: list.assets.filter(s => s !== symbol) };
-      await dbService.saveWatchlist(uid, updated);
+      // Instant optimistic update
       set({ watchlists: get().watchlists.map(w => w.id === listId ? updated : w) });
+      // Continuous persistence
+      await dbService.saveWatchlist(uid, updated);
     }
   },
+
   deleteWatchlist: async (uid, listId) => {
-    await dbService.deleteWatchlist(uid, listId);
+    // Instant optimistic update
     set({ watchlists: get().watchlists.filter(w => w.id !== listId) });
+    // Continuous persistence
+    await dbService.deleteWatchlist(uid, listId);
   },
+
   pinWatchlist: async (uid, listId) => {
     const watchlists = get().watchlists.map(w => {
       if (w.id === listId) {
