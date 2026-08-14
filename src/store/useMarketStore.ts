@@ -39,15 +39,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   lastUpdated: new Date(),
 
   fetchPrices: async () => {
-    // 1. If we have no assets yet, load cached asset snapshot from Firebase/local cache first for instant UI
-    if (get().assets.length === 0) {
-      set({ loading: true, error: null });
-      const cached = await dbService.getMarketAssets();
-      if (cached && cached.length > 0) {
-        set({ assets: cached, loading: false });
-      }
-    }
-
     try {
       const [stocks, cryptos, forex, mutualFunds] = await Promise.all([
         getStockData(),
@@ -63,8 +54,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         lastUpdated: new Date()
       });
 
-      // Continuously persist latest asset data to Firebase database
-      dbService.saveMarketAssets(combinedAssets);
+      // Continuously persist latest asset data to Firebase database in background
+      try {
+        dbService.saveMarketAssets(combinedAssets);
+      } catch (_) {}
     } catch (e: any) {
       set({ error: "Failed to fetch market rates", loading: false });
     }
