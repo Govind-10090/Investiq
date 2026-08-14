@@ -21,9 +21,8 @@ export function Portfolio() {
   }, [fetchPrices]);
 
   useEffect(() => {
-    if (user?.uid) {
-      fetchHoldings(user.uid);
-    }
+    const uid = user?.uid || "guest";
+    fetchHoldings(uid);
   }, [user?.uid, fetchHoldings]);
 
   // Adjust price input when selected symbol changes
@@ -39,9 +38,10 @@ export function Portfolio() {
   const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     const asset = assets.find(a => a.symbol === selectedAssetSymbol);
-    if (user?.uid && asset && sharesInput > 0 && priceInput > 0) {
-      await addHolding(user.uid, asset, sharesInput, priceInput);
+    const uid = user?.uid || "guest";
+    if (asset && sharesInput > 0 && priceInput > 0) {
       setIsAddOpen(false);
+      await addHolding(uid, asset, sharesInput, priceInput);
     }
   };
 
@@ -57,18 +57,18 @@ export function Portfolio() {
 
     const asset = assets.find(a => a.symbol === symbol);
     const sellPrice = asset ? asset.price : 100;
-    if (user?.uid) {
-      try {
-        await sellHolding(user.uid, symbol, qty, sellPrice);
-      } catch (e: any) {
-        alert(e.message || "Failed to sell holding.");
-      }
+    const uid = user?.uid || "guest";
+    try {
+      await sellHolding(uid, symbol, qty, sellPrice);
+    } catch (e: any) {
+      alert(e.message || "Failed to sell holding.");
     }
   };
 
   const handleDeleteHolding = async (id: string) => {
-    if (user?.uid && confirm("Are you sure you want to delete this position entirely?")) {
-      await deleteHolding(user.uid, id);
+    if (confirm("Are you sure you want to delete this position entirely?")) {
+      const uid = user?.uid || "guest";
+      await deleteHolding(uid, id);
     }
   };
 

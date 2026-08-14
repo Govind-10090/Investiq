@@ -53,19 +53,20 @@ export function MutualFunds() {
 
   const handleSipSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (user?.uid && sipForm) {
-      // Calculate starting units purchased: amount / NAV
+    const uid = user?.uid || "guest";
+    if (sipForm) {
       const units = Number((sipForm.amount / sipForm.nav).toFixed(4));
-      addHolding(user.uid, {
+      const fundData = {
         symbol: sipForm.symbol,
         name: sipForm.name,
         price: sipForm.nav,
         change: 0,
         volume: "N/A",
-        type: "mutual_fund",
+        type: "mutual_fund" as const,
         sector: "Mutual Fund"
-      }, units, sipForm.nav);
+      };
       setSipForm(null);
+      addHolding(uid, fundData, units, sipForm.nav);
     }
   };
 

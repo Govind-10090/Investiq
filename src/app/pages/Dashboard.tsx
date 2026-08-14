@@ -31,9 +31,8 @@ export function Dashboard() {
 
   // Load holdings for the user
   useEffect(() => {
-    if (user?.uid) {
-      fetchHoldings(user.uid);
-    }
+    const uid = user?.uid || "guest";
+    fetchHoldings(uid);
   }, [user?.uid, fetchHoldings]);
 
   // --- Calculate Live Metrics ---
