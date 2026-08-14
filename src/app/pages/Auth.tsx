@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "../../store";
 import { TrendingUp, Mail, Lock, User, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -9,14 +9,27 @@ export function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const { login, register, googleLogin, resetPassword, loading } = useAuthStore();
+  const { user, login, register, googleLogin, resetPassword, initAuth } = useAuthStore();
   const navigate = useNavigate();
+
+  // Initialize auth listener and redirect if already logged in
+  useEffect(() => {
+    const unsubscribe = initAuth();
+    if (user) {
+      navigate("/", { replace: true });
+    }
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user, initAuth, navigate]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setToastMessage(null);
+    setIsSubmitting(true);
 
     try {
       if (isForgotPassword) {
@@ -33,16 +46,21 @@ export function Auth() {
       }
     } catch (err: any) {
       setToastMessage({ type: "error", text: err.message || "Authentication failed" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     setToastMessage(null);
+    setIsSubmitting(true);
     try {
       await googleLogin();
       navigate("/");
     } catch (err: any) {
       setToastMessage({ type: "error", text: err.message || "Google Sign-in failed" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -101,10 +119,10 @@ export function Auth() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              {loading ? "Sending link..." : "Send Reset Email"}
+              {isSubmitting ? "Sending link..." : "Send Reset Email"}
             </button>
 
             <button
@@ -203,10 +221,10 @@ export function Auth() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={isSubmitting}
               className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              {loading
+              {isSubmitting
                 ? "Authenticating..."
                 : isLogin
                 ? "Sign In"
@@ -225,8 +243,8 @@ export function Auth() {
             <button
               type="button"
               onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full h-10 bg-card hover:bg-muted text-foreground border border-border/30 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full h-10 bg-card hover:bg-muted text-foreground border border-border/30 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <svg className="size-4 shrink-0" viewBox="0 0 24 24">
                 <path
@@ -246,7 +264,7 @@ export function Auth() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Continue with Google</span>
+              <span>{isSubmitting ? "Connecting..." : "Continue with Google"}</span>
             </button>
           </form>
         )}

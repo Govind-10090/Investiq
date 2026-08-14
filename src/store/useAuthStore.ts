@@ -19,7 +19,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
   error: null,
   login: async (email, password) => {
-    set({ loading: true, error: null });
+    set({ error: null });
     try {
       const user = await authService.login(email, password);
       set({ user, loading: false });
@@ -29,7 +29,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   register: async (email, password, displayName) => {
-    set({ loading: true, error: null });
+    set({ error: null });
     try {
       const user = await authService.register(email, password, displayName);
       set({ user, loading: false });
@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   googleLogin: async () => {
-    set({ loading: true, error: null });
+    set({ error: null });
     try {
       const user = await authService.googleLogin();
       set({ user, loading: false });
@@ -49,17 +49,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   logout: async () => {
-    set({ loading: true });
+    set({ loading: false });
     await authService.logout();
     set({ user: null, loading: false });
   },
   resetPassword: async (email) => {
-    set({ loading: true, error: null });
+    set({ error: null });
     try {
       await authService.resetPassword(email);
-      set({ loading: false });
     } catch (e: any) {
-      set({ error: e.message || "Reset failed", loading: false });
+      set({ error: e.message || "Reset failed" });
       throw e;
     }
   },
