@@ -8,11 +8,11 @@ export interface PortfolioState {
   transactions: Transaction[];
   loading: boolean;
   activeSubscription: (() => void) | null;
-  fetchHoldings: (uid: string) => Promise<void>;
-  addHolding: (uid: string, asset: Asset, shares: number, price: number) => Promise<void>;
-  sellHolding: (uid: string, symbol: string, shares: number, price: number) => Promise<void>;
-  deleteHolding: (uid: string, holdingId: string) => Promise<void>;
-  fetchTransactions: (uid: string) => Promise<void>;
+  fetchHoldings: (uid: string, email?: string) => Promise<void>;
+  addHolding: (uid: string, asset: Asset, shares: number, price: number, email?: string) => Promise<void>;
+  sellHolding: (uid: string, symbol: string, shares: number, price: number, email?: string) => Promise<void>;
+  deleteHolding: (uid: string, holdingId: string, email?: string) => Promise<void>;
+  fetchTransactions: (uid: string, email?: string) => Promise<void>;
 }
 
 // Get initial cached holdings for any active session
@@ -22,7 +22,6 @@ const getInitialHoldingsAndTxs = () => {
     const cachedUser = cachedUserStr ? JSON.parse(cachedUserStr) : null;
     const db = getMockDB();
     
-    // Check by UID, Email, or Guest
     const uid = cachedUser?.uid;
     const email = cachedUser?.email;
 
@@ -44,8 +43,8 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
     loading: false,
     activeSubscription: null,
 
-    fetchHoldings: async (uid) => {
-      if (!uid) return;
+    fetchHoldings: async (uid, email) => {
+      if (!uid && !email) return;
       set({ loading: true });
 
       // Clean up any existing realtime listener
@@ -56,14 +55,13 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
       try {
         // 1. Initial fetch from local DB + Firestore
         const [holdings, transactions] = await Promise.all([
-          dbService.getHoldings(uid),
-          dbService.getTransactions(uid)
+          dbService.getHoldings(uid, email),
+          dbService.getTransactions(uid, email)
         ]);
 
         if (holdings && holdings.length > 0) {
-          set({ holdings, transactions, loading: false });
+          set({ holdings, transactions: transactions || [], loading: false });
         } else {
-          // If empty, keep existing cached holdings if present
           set((state) => ({
             holdings: state.holdings.length > 0 ? state.holdings : (holdings || []),
             transactions: state.transactions.length > 0 ? state.transactions : (transactions || []),
@@ -95,10 +93,10 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
       }
     },
 
-    fetchTransactions: async (uid) => {
-      if (!uid) return;
+    fetchTransactions: async (uid, email) => {
+      if (!uid && !email) return;
       try {
-        const transactions = await dbService.getTransactions(uid);
+        const transactions = await dbService.getTransactions(uid, email);
         if (transactions && transactions.length > 0) {
           set({ transactions });
         }
@@ -107,7 +105,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
       }
     },
 
-    addHolding: async (uid, asset, shares, price) => {
+    addHolding: async (uid, asset, shares, price, email) => {
       const existing = get().holdings.find(h => h.symbol === asset.symbol);
       let updatedHolding: PortfolioHolding;
 
@@ -161,15 +159,15 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
       // 2. Continuously persist holding and transaction to Firebase Firestore & local storage
       try {
         await Promise.all([
-          dbService.saveHolding(uid, updatedHolding),
-          dbService.saveTransaction(uid, newTransaction)
+          dbService.saveHolding(uid, updatedHolding, email),
+          dbService.saveTransaction(uid, newTransaction, email)
         ]);
       } catch (err) {
         console.error("InvestIQ: Failed to persist holding/transaction to Firebase:", err);
       }
     },
 
-    sellHolding: async (uid, symbol, shares, price) => {
+    sellHolding: async (uid, symbol, shares, price, email) => {
       const existing = get().holdings.find(h => h.symbol === symbol);
       if (!existing || existing.shares < shares) {
         throw new Error("Insufficient shares");
@@ -211,13 +209,13 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
 
       try {
         const promises: Promise<any>[] = [
-          dbService.saveTransaction(uid, sellTransaction)
+          dbService.saveTransaction(uid, sellTransaction, email)
         ];
 
         if (isDelete) {
-          promises.push(dbService.deleteHolding(uid, existing.id));
+          promises.push(dbService.deleteHolding(uid, existing.id, email));
         } else if (updatedHolding) {
-          promises.push(dbService.saveHolding(uid, updatedHolding));
+          promises.push(dbService.saveHolding(uid, updatedHolding, email));
         }
 
         await Promise.all(promises);
@@ -226,11 +224,11 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => {
       }
     },
 
-    deleteHolding: async (uid, holdingId) => {
+    deleteHolding: async (uid, holdingId, email) => {
       // Instant optimistic state update
       set({ holdings: get().holdings.filter(h => h.id !== holdingId) });
       try {
-        await dbService.deleteHolding(uid, holdingId);
+        await dbService.deleteHolding(uid, holdingId, email);
       } catch (err) {
         console.error("InvestIQ: Failed to delete holding from Firebase:", err);
       }

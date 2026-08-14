@@ -34,8 +34,8 @@ export function Dashboard() {
   // Load holdings for the user
   useEffect(() => {
     const uid = user?.uid || "guest";
-    fetchHoldings(uid);
-  }, [user?.uid, fetchHoldings]);
+    fetchHoldings(uid, user?.email);
+  }, [user?.uid, user?.email, fetchHoldings]);
 
   // --- Calculate Live Metrics ---
   const holdingsWithLivePrice = holdings.map(h => {

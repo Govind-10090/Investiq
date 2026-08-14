@@ -50,8 +50,8 @@ export const useAuthStore = create<AuthState>((set) => {
         const user = await authService.login(email, password);
         setCachedUser(user);
         set({ user, loading: false });
-        if (user?.uid) {
-          usePortfolioStore.getState().fetchHoldings(user.uid);
+        if (user) {
+          await usePortfolioStore.getState().fetchHoldings(user.uid, user.email);
         }
       } catch (e: any) {
         set({ error: e.message || "Login failed", loading: false });
@@ -65,8 +65,8 @@ export const useAuthStore = create<AuthState>((set) => {
         const user = await authService.register(email, password, displayName);
         setCachedUser(user);
         set({ user, loading: false });
-        if (user?.uid) {
-          usePortfolioStore.getState().fetchHoldings(user.uid);
+        if (user) {
+          await usePortfolioStore.getState().fetchHoldings(user.uid, user.email);
         }
       } catch (e: any) {
         set({ error: e.message || "Registration failed", loading: false });
@@ -80,8 +80,8 @@ export const useAuthStore = create<AuthState>((set) => {
         const user = await authService.googleLogin();
         setCachedUser(user);
         set({ user, loading: false });
-        if (user?.uid) {
-          usePortfolioStore.getState().fetchHoldings(user.uid);
+        if (user) {
+          await usePortfolioStore.getState().fetchHoldings(user.uid, user.email);
         }
       } catch (e: any) {
         set({ error: e.message || "Google Sign-in failed", loading: false });
@@ -110,8 +110,8 @@ export const useAuthStore = create<AuthState>((set) => {
       return authService.onAuthStateChanged((user) => {
         setCachedUser(user);
         set({ user, loading: false });
-        if (user?.uid) {
-          usePortfolioStore.getState().fetchHoldings(user.uid);
+        if (user) {
+          usePortfolioStore.getState().fetchHoldings(user.uid, user.email);
         }
       });
     }
