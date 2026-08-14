@@ -20,17 +20,32 @@ export const dbService = {
   // 1. WATCHLISTS (Continuous Sync)
   // ==========================================
   getWatchlists: async (userId: string): Promise<Watchlist[]> => {
-    if (isLiveFirebase) {
+    const db = getMockDB();
+    const local = db.watchlists[userId] || [];
+
+    if (isLiveFirebase && userId) {
       try {
+        const subSnap = await getDocs(collection(firebaseDb, "users", userId, "watchlists"));
+        if (!subSnap.empty) {
+          const remote = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Watchlist));
+          db.watchlists[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
+
         const q = query(collection(firebaseDb, "watchlists"), where("userId", "==", userId));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Watchlist));
+        if (!snapshot.empty) {
+          const remote = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Watchlist));
+          db.watchlists[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
-        console.warn("Firestore getWatchlists failed, using local cache:", e);
+        console.warn("Firestore getWatchlists query, using local cache:", e);
       }
     }
-    const db = getMockDB();
-    return db.watchlists[userId] || [];
+    return local;
   },
 
   saveWatchlist: async (userId: string, watchlist: any): Promise<void> => {
@@ -45,11 +60,12 @@ export const dbService = {
     }
     saveMockDB(db);
 
-    // 2. Persist to Firebase Firestore
-    if (isLiveFirebase) {
+    // 2. Persist to Firebase Firestore under user subcollection and root collection
+    if (isLiveFirebase && userId) {
       try {
-        const docRef = doc(firebaseDb, "watchlists", watchlist.id);
-        await setDoc(docRef, { ...watchlist, userId, updatedAt: new Date().toISOString() });
+        const payload = { ...watchlist, userId, updatedAt: new Date().toISOString() };
+        await setDoc(doc(firebaseDb, "users", userId, "watchlists", watchlist.id), payload);
+        await setDoc(doc(firebaseDb, "watchlists", watchlist.id), payload);
       } catch (e) {
         console.warn("Firestore saveWatchlist error:", e);
       }
@@ -63,8 +79,9 @@ export const dbService = {
       saveMockDB(db);
     }
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
+        await deleteDoc(doc(firebaseDb, "users", userId, "watchlists", watchlistId));
         await deleteDoc(doc(firebaseDb, "watchlists", watchlistId));
       } catch (e) {
         console.warn("Firestore deleteWatchlist error:", e);
@@ -73,17 +90,18 @@ export const dbService = {
   },
 
   subscribeWatchlists: (userId: string, onUpdate: (watchlists: Watchlist[]) => void): (() => void) => {
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "watchlists"), where("userId", "==", userId));
-        return onSnapshot(q, (snapshot) => {
-          const lists = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Watchlist));
-          if (lists.length > 0) {
+        const unsub = onSnapshot(collection(firebaseDb, "users", userId, "watchlists"), (snapshot) => {
+          if (!snapshot.empty) {
+            const lists = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Watchlist));
             onUpdate(lists);
+            const db = getMockDB();
+            db.watchlists[userId] = lists;
+            saveMockDB(db);
           }
-        }, (error) => {
-          console.warn("Watchlists live subscription warning:", error);
-        });
+        }, () => {});
+        return unsub;
       } catch (e) {
         console.warn("Firestore subscribeWatchlists failed:", e);
       }
@@ -92,24 +110,42 @@ export const dbService = {
   },
 
   // ==========================================
-  // 2. HOLDINGS / PORTFOLIOS (Continuous Sync)
+  // 2. HOLDINGS / PORTFOLIOS (Continuous Sync with User UID)
   // ==========================================
   getHoldings: async (userId: string): Promise<PortfolioHolding[]> => {
-    if (isLiveFirebase) {
+    // 1. Instant return from local DB cache for 0ms initial load
+    const db = getMockDB();
+    const local = db.holdings[userId] || [];
+
+    if (isLiveFirebase && userId) {
       try {
+        // A. Check user subcollection users/{userId}/holdings
+        const subSnap = await getDocs(collection(firebaseDb, "users", userId, "holdings"));
+        if (!subSnap.empty) {
+          const remote = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioHolding));
+          db.holdings[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
+
+        // B. Check root collection holdings where userId == userId
         const q = query(collection(firebaseDb, "holdings"), where("userId", "==", userId));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioHolding));
+        if (!snapshot.empty) {
+          const remote = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioHolding));
+          db.holdings[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
-        console.warn("Firestore getHoldings failed, using local cache:", e);
+        console.warn("Firestore getHoldings query, using local cache:", e);
       }
     }
-    const db = getMockDB();
-    return db.holdings[userId] || [];
+    return local;
   },
 
   saveHolding: async (userId: string, holding: PortfolioHolding): Promise<void> => {
-    // 1. Keep local cache updated
+    // 1. Keep local cache updated instantly
     const db = getMockDB();
     if (!db.holdings[userId]) db.holdings[userId] = [];
     const index = db.holdings[userId].findIndex(h => h.id === holding.id || h.symbol === holding.symbol);
@@ -120,11 +156,12 @@ export const dbService = {
     }
     saveMockDB(db);
 
-    // 2. Persist to Firestore
-    if (isLiveFirebase) {
+    // 2. Persist to Firestore under user subcollection and root collection
+    if (isLiveFirebase && userId) {
       try {
-        const docRef = doc(firebaseDb, "holdings", holding.id);
-        await setDoc(docRef, { ...holding, userId, updatedAt: new Date().toISOString() });
+        const payload = { ...holding, userId, updatedAt: new Date().toISOString() };
+        await setDoc(doc(firebaseDb, "users", userId, "holdings", holding.id), payload);
+        await setDoc(doc(firebaseDb, "holdings", holding.id), payload);
       } catch (e) {
         console.warn("Firestore saveHolding error:", e);
       }
@@ -138,8 +175,9 @@ export const dbService = {
       saveMockDB(db);
     }
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
+        await deleteDoc(doc(firebaseDb, "users", userId, "holdings", holdingId));
         await deleteDoc(doc(firebaseDb, "holdings", holdingId));
       } catch (e) {
         console.warn("Firestore deleteHolding error:", e);
@@ -148,17 +186,18 @@ export const dbService = {
   },
 
   subscribeHoldings: (userId: string, onUpdate: (holdings: PortfolioHolding[]) => void): (() => void) => {
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "holdings"), where("userId", "==", userId));
-        return onSnapshot(q, (snapshot) => {
-          const holdings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioHolding));
-          if (holdings.length > 0) {
+        const unsub = onSnapshot(collection(firebaseDb, "users", userId, "holdings"), (snapshot) => {
+          if (!snapshot.empty) {
+            const holdings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioHolding));
             onUpdate(holdings);
+            const db = getMockDB();
+            db.holdings[userId] = holdings;
+            saveMockDB(db);
           }
-        }, (error) => {
-          console.warn("Holdings live subscription warning:", error);
-        });
+        }, () => {});
+        return unsub;
       } catch (e) {
         console.warn("Firestore subscribeHoldings failed:", e);
       }
@@ -167,30 +206,35 @@ export const dbService = {
   },
 
   // ==========================================
-  // 3. TRANSACTIONS LOG (Continuous Sync)
+  // 3. TRANSACTIONS LOG (Continuous Sync with User UID)
   // ==========================================
   getTransactions: async (userId: string): Promise<Transaction[]> => {
-    if (isLiveFirebase) {
+    const db = getMockDB();
+    const local = db.transactions[userId] || [];
+
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(
-          collection(firebaseDb, "transactions"), 
-          where("userId", "==", userId),
-          orderBy("date", "desc"),
-          limit(100)
-        );
+        const subSnap = await getDocs(collection(firebaseDb, "users", userId, "transactions"));
+        if (!subSnap.empty) {
+          const remote = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+          db.transactions[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
+
+        const q = query(collection(firebaseDb, "transactions"), where("userId", "==", userId));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+        if (!snapshot.empty) {
+          const remote = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+          db.transactions[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
-        // Fallback without orderBy in case composite index is building
-        try {
-          const fallbackQ = query(collection(firebaseDb, "transactions"), where("userId", "==", userId));
-          const snap = await getDocs(fallbackQ);
-          return snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
-        } catch (_) {}
+        console.warn("Firestore getTransactions fallback:", e);
       }
     }
-    const db = getMockDB();
-    return db.transactions[userId] || [];
+    return local;
   },
 
   saveTransaction: async (userId: string, transaction: Transaction): Promise<void> => {
@@ -199,10 +243,11 @@ export const dbService = {
     db.transactions[userId].unshift(transaction);
     saveMockDB(db);
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const docRef = doc(firebaseDb, "transactions", transaction.id);
-        await setDoc(docRef, { ...transaction, userId, recordedAt: new Date().toISOString() });
+        const payload = { ...transaction, userId, recordedAt: new Date().toISOString() };
+        await setDoc(doc(firebaseDb, "users", userId, "transactions", transaction.id), payload);
+        await setDoc(doc(firebaseDb, "transactions", transaction.id), payload);
       } catch (e) {
         console.warn("Firestore saveTransaction error:", e);
       }
@@ -210,13 +255,18 @@ export const dbService = {
   },
 
   subscribeTransactions: (userId: string, onUpdate: (txs: Transaction[]) => void): (() => void) => {
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "transactions"), where("userId", "==", userId));
-        return onSnapshot(q, (snapshot) => {
-          const txs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
-          onUpdate(txs);
-        });
+        const unsub = onSnapshot(collection(firebaseDb, "users", userId, "transactions"), (snapshot) => {
+          if (!snapshot.empty) {
+            const txs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+            onUpdate(txs);
+            const db = getMockDB();
+            db.transactions[userId] = txs;
+            saveMockDB(db);
+          }
+        }, () => {});
+        return unsub;
       } catch (e) {
         console.warn("Firestore subscribeTransactions failed:", e);
       }
@@ -228,17 +278,31 @@ export const dbService = {
   // 4. ALERTS (Continuous Sync)
   // ==========================================
   getAlerts: async (userId: string): Promise<PriceAlert[]> => {
-    if (isLiveFirebase) {
+    const db = getMockDB();
+    const local = db.alerts[userId] || [];
+
+    if (isLiveFirebase && userId) {
       try {
+        const subSnap = await getDocs(collection(firebaseDb, "users", userId, "alerts"));
+        if (!subSnap.empty) {
+          const remote = subSnap.docs.map(d => ({ id: d.id, ...d.data() } as PriceAlert));
+          db.alerts[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
         const q = query(collection(firebaseDb, "alerts"), where("userId", "==", userId));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PriceAlert));
+        if (!snapshot.empty) {
+          const remote = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PriceAlert));
+          db.alerts[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
-        console.warn("Firestore getAlerts failed, using local cache:", e);
+        console.warn("Firestore getAlerts fallback:", e);
       }
     }
-    const db = getMockDB();
-    return db.alerts[userId] || [];
+    return local;
   },
 
   saveAlert: async (userId: string, alert: any): Promise<void> => {
@@ -252,10 +316,11 @@ export const dbService = {
     }
     saveMockDB(db);
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const docRef = doc(firebaseDb, "alerts", alert.id);
-        await setDoc(docRef, { ...alert, userId, updatedAt: new Date().toISOString() });
+        const payload = { ...alert, userId, updatedAt: new Date().toISOString() };
+        await setDoc(doc(firebaseDb, "users", userId, "alerts", alert.id), payload);
+        await setDoc(doc(firebaseDb, "alerts", alert.id), payload);
       } catch (e) {
         console.warn("Firestore saveAlert error:", e);
       }
@@ -269,8 +334,9 @@ export const dbService = {
       saveMockDB(db);
     }
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
+        await deleteDoc(doc(firebaseDb, "users", userId, "alerts", alertId));
         await deleteDoc(doc(firebaseDb, "alerts", alertId));
       } catch (e) {
         console.warn("Firestore deleteAlert error:", e);
@@ -279,15 +345,18 @@ export const dbService = {
   },
 
   subscribeAlerts: (userId: string, onUpdate: (alerts: PriceAlert[]) => void): (() => void) => {
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "alerts"), where("userId", "==", userId));
-        return onSnapshot(q, (snapshot) => {
-          const alerts = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PriceAlert));
-          if (alerts.length > 0) {
+        const unsub = onSnapshot(collection(firebaseDb, "users", userId, "alerts"), (snapshot) => {
+          if (!snapshot.empty) {
+            const alerts = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PriceAlert));
             onUpdate(alerts);
+            const db = getMockDB();
+            db.alerts[userId] = alerts;
+            saveMockDB(db);
           }
-        });
+        }, () => {});
+        return unsub;
       } catch (e) {
         console.warn("Firestore subscribeAlerts failed:", e);
       }
@@ -299,17 +368,24 @@ export const dbService = {
   // 5. USER SETTINGS / PREFERENCES
   // ==========================================
   getSettings: async (userId: string): Promise<any> => {
-    if (isLiveFirebase) {
+    const db = getMockDB();
+    const local = db.settings[userId] || null;
+
+    if (isLiveFirebase && userId) {
       try {
         const docRef = doc(firebaseDb, "settings", userId);
         const docSnap = await getDoc(docRef);
-        return docSnap.exists() ? docSnap.data() : null;
+        if (docSnap.exists()) {
+          const remote = docSnap.data();
+          db.settings[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
         console.warn("Firestore getSettings failed:", e);
       }
     }
-    const db = getMockDB();
-    return db.settings[userId] || null;
+    return local;
   },
 
   saveSettings: async (userId: string, settings: any): Promise<void> => {
@@ -317,7 +393,7 @@ export const dbService = {
     db.settings[userId] = { ...db.settings[userId], ...settings };
     saveMockDB(db);
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
         const docRef = doc(firebaseDb, "settings", userId);
         await setDoc(docRef, { ...settings, updatedAt: new Date().toISOString() }, { merge: true });
@@ -331,17 +407,23 @@ export const dbService = {
   // 6. NOTES (Continuous Sync)
   // ==========================================
   getNotes: async (userId: string): Promise<any[]> => {
-    if (isLiveFirebase) {
+    const db = getMockDB();
+    const local = db.notes[userId] || [];
+
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "notes"), where("userId", "==", userId));
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const subSnap = await getDocs(collection(firebaseDb, "users", userId, "notes"));
+        if (!subSnap.empty) {
+          const remote = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          db.notes[userId] = remote;
+          saveMockDB(db);
+          return remote;
+        }
       } catch (e) {
         console.warn("Firestore getNotes failed:", e);
       }
     }
-    const db = getMockDB();
-    return db.notes[userId] || [];
+    return local;
   },
 
   saveNote: async (userId: string, note: any): Promise<void> => {
@@ -356,10 +438,10 @@ export const dbService = {
     }
     saveMockDB(db);
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const docRef = doc(firebaseDb, "notes", note.id);
-        await setDoc(docRef, { ...note, userId, updatedAt: new Date().toISOString() });
+        await setDoc(doc(firebaseDb, "users", userId, "notes", note.id), { ...note, userId, updatedAt: new Date().toISOString() });
+        await setDoc(doc(firebaseDb, "notes", note.id), { ...note, userId, updatedAt: new Date().toISOString() });
       } catch (e) {
         console.warn("Firestore saveNote error:", e);
       }
@@ -373,8 +455,9 @@ export const dbService = {
       saveMockDB(db);
     }
 
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
+        await deleteDoc(doc(firebaseDb, "users", userId, "notes", noteId));
         await deleteDoc(doc(firebaseDb, "notes", noteId));
       } catch (e) {
         console.warn("Firestore deleteNote error:", e);
@@ -383,15 +466,18 @@ export const dbService = {
   },
 
   subscribeNotes: (userId: string, onUpdate: (notes: any[]) => void): (() => void) => {
-    if (isLiveFirebase) {
+    if (isLiveFirebase && userId) {
       try {
-        const q = query(collection(firebaseDb, "notes"), where("userId", "==", userId));
-        return onSnapshot(q, (snapshot) => {
-          const notes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          if (notes.length > 0) {
+        const unsub = onSnapshot(collection(firebaseDb, "users", userId, "notes"), (snapshot) => {
+          if (!snapshot.empty) {
+            const notes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             onUpdate(notes);
+            const db = getMockDB();
+            db.notes[userId] = notes;
+            saveMockDB(db);
           }
-        });
+        }, () => {});
+        return unsub;
       } catch (e) {
         console.warn("Firestore subscribeNotes failed:", e);
       }

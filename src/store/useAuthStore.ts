@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { authService } from "../firebase/config";
 import { AppUser } from "../types";
+import { usePortfolioStore } from "./usePortfolioStore";
 
 export interface AuthState {
   user: AppUser | null;
@@ -23,6 +24,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await authService.login(email, password);
       set({ user, loading: false });
+      if (user?.uid) {
+        usePortfolioStore.getState().fetchHoldings(user.uid);
+      }
     } catch (e: any) {
       set({ error: e.message || "Login failed", loading: false });
       throw e;
@@ -33,6 +37,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await authService.register(email, password, displayName);
       set({ user, loading: false });
+      if (user?.uid) {
+        usePortfolioStore.getState().fetchHoldings(user.uid);
+      }
     } catch (e: any) {
       set({ error: e.message || "Registration failed", loading: false });
       throw e;
@@ -43,6 +50,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await authService.googleLogin();
       set({ user, loading: false });
+      if (user?.uid) {
+        usePortfolioStore.getState().fetchHoldings(user.uid);
+      }
     } catch (e: any) {
       set({ error: e.message || "Google Sign-in failed", loading: false });
       throw e;
@@ -65,6 +75,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   initAuth: () => {
     return authService.onAuthStateChanged((user) => {
       set({ user, loading: false });
+      if (user?.uid) {
+        // Automatically hydrate user holdings upon page refresh or auth change!
+        usePortfolioStore.getState().fetchHoldings(user.uid);
+      }
     });
   }
 }));
