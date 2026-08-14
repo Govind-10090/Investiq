@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { TrendingUp, TrendingDown, Plus, Minus, Briefcase, PlusCircle, Trash, Search, ChevronRight, History } from "lucide-react";
 import { usePortfolioStore, useMarketStore, useAuthStore } from "../../store";
+import { INITIAL_MARKET_ASSETS } from "../../store/useMarketStore";
 import { LivePrice } from "../components/LivePrice";
 
 export function Portfolio() {
@@ -14,7 +15,13 @@ export function Portfolio() {
   const [sharesInput, setSharesInput] = useState<number>(10);
   const [priceInput, setPriceInput] = useState<number>(0);
   const [assetSearchQuery, setAssetSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<"all" | "stock" | "crypto" | "mutual_fund" | "forex">("all");
   const [addStep, setAddStep] = useState<"pick" | "fill">("pick");
+
+  // Always guaranteed active asset list
+  const availableAssets = useMemo(() => {
+    return assets && assets.length > 0 ? assets : INITIAL_MARKET_ASSETS;
+  }, [assets]);
 
   useEffect(() => {
     fetchPrices();
@@ -412,11 +419,12 @@ export function Portfolio() {
             {/* Step 1: Asset Picker */}
             {addStep === "pick" && (
               <div className="flex flex-col gap-3 p-5 overflow-hidden flex-1">
+                {/* Search Input */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search symbol or name..."
+                    placeholder="Search stock, crypto, or mutual fund..."
                     value={assetSearchQuery}
                     onChange={(e) => setAssetSearchQuery(e.target.value)}
                     autoFocus
@@ -424,21 +432,58 @@ export function Portfolio() {
                   />
                 </div>
 
-                <div className="flex-1 overflow-y-auto divide-y divide-border/20 border border-border/30 rounded-lg bg-background/30" style={{ maxHeight: 320 }}>
-                  {assets
-                    .filter(a =>
-                      a.symbol.toLowerCase().includes(assetSearchQuery.toLowerCase()) ||
-                      a.name.toLowerCase().includes(assetSearchQuery.toLowerCase())
-                    )
+                {/* Category Pills */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar text-[11px]">
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "stock", label: "Stocks" },
+                    { id: "crypto", label: "Crypto" },
+                    { id: "mutual_fund", label: "Mutual Funds" },
+                    { id: "forex", label: "Forex" },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.id as any)}
+                      className={`px-2.5 py-1 rounded-md font-medium shrink-0 transition-all cursor-pointer ${
+                        selectedCategory === cat.id
+                          ? "bg-emerald-500 text-white shadow-sm"
+                          : "bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Asset Results List */}
+                <div className="flex-1 overflow-y-auto divide-y divide-border/20 border border-border/30 rounded-lg bg-background/30" style={{ maxHeight: 300 }}>
+                  {availableAssets
+                    .filter((a) => {
+                      const matchesCategory = selectedCategory === "all" || a.type === selectedCategory;
+                      const matchesSearch =
+                        !assetSearchQuery.trim() ||
+                        a.symbol.toLowerCase().includes(assetSearchQuery.toLowerCase()) ||
+                        a.name.toLowerCase().includes(assetSearchQuery.toLowerCase());
+                      return matchesCategory && matchesSearch;
+                    })
                     .map((asset) => (
                       <button
                         key={asset.symbol}
+                        type="button"
                         onClick={() => handleAssetSelect(asset.symbol)}
-                        className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors text-left"
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/80 transition-colors text-left cursor-pointer group"
                       >
-                        <div>
-                          <p className="text-xs font-bold text-foreground tracking-wider uppercase">{asset.symbol}</p>
-                          <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{asset.name}</p>
+                        <div className="flex items-center gap-2.5">
+                          <div className="size-7 rounded-lg bg-muted border border-border/30 flex items-center justify-center text-[10px] font-bold text-emerald-400 shrink-0">
+                            {asset.type === "stock" ? "ST" : asset.type === "crypto" ? "CR" : asset.type === "mutual_fund" ? "MF" : "FX"}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-foreground tracking-wider uppercase group-hover:text-emerald-400 transition-colors">
+                              {asset.symbol}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">{asset.name}</p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="text-right">
@@ -447,7 +492,7 @@ export function Portfolio() {
                               {asset.change >= 0 ? "+" : ""}{asset.change.toFixed(2)}%
                             </p>
                           </div>
-                          <ChevronRight className="size-3.5 text-muted-foreground" />
+                          <ChevronRight className="size-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
                         </div>
                       </button>
                     ))}
@@ -460,7 +505,7 @@ export function Portfolio() {
               <form onSubmit={handleSubmitTransaction} className="flex flex-col gap-4 p-5">
                 {/* Selected Asset Summary */}
                 {(() => {
-                  const asset = assets.find(a => a.symbol === selectedAssetSymbol);
+                  const asset = availableAssets.find(a => a.symbol === selectedAssetSymbol);
                   return asset ? (
                     <div className="flex items-center justify-between p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
                       <div>
