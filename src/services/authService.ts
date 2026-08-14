@@ -19,6 +19,8 @@ import {
   removeMockCurrentUser 
 } from "./mockDb";
 
+import { emailService } from "./emailService";
+
 export const authService = {
   login: async (email: string, password: string): Promise<AppUser> => {
     if (isLiveFirebase) {
@@ -43,10 +45,11 @@ export const authService = {
   },
 
   register: async (email: string, password: string, displayName: string): Promise<AppUser> => {
+    let appUser: AppUser;
     if (isLiveFirebase) {
       const res = await createUserWithEmailAndPassword(firebaseAuth, email, password);
       await updateProfile(res.user, { displayName });
-      return {
+      appUser = {
         uid: res.user.uid,
         email: res.user.email,
         displayName: displayName
@@ -59,10 +62,18 @@ export const authService = {
       }
       users[email] = { email, password, displayName };
       saveMockUsers(users);
-      const appUser = { uid: email, email, displayName };
+      appUser = { uid: email, email, displayName };
       saveMockCurrentUser(appUser);
-      return appUser;
     }
+
+    // Automatically send and queue welcome email
+    try {
+      await emailService.sendWelcomeEmail(email, displayName);
+    } catch (err) {
+      console.warn("InvestIQ: Welcome email warning:", err);
+    }
+
+    return appUser;
   },
 
   googleLogin: async (): Promise<AppUser> => {

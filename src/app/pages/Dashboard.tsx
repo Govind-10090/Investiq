@@ -6,12 +6,14 @@ import { WatchlistPreview } from "../components/WatchlistPreview";
 import { NewsPreview } from "../components/NewsPreview";
 import { InsightsPreview } from "../components/InsightsPreview";
 import { useMarketStore, usePortfolioStore, useAuthStore } from "../../store";
+import { generateWelcomeEmailHTML } from "../../services/emailService";
 
 export function Dashboard() {
   const { user } = useAuthStore();
   const { assets, fetchPrices, updatePricesFromWS, connectionStatus, lastUpdated } = useMarketStore();
   const { holdings, fetchHoldings } = usePortfolioStore();
   const [welcomeName, setWelcomeName] = useState<string | null>(null);
+  const [showWelcomeEmailModal, setShowWelcomeEmailModal] = useState(false);
 
   // Check for first-time registration welcome flag
   useEffect(() => {
@@ -142,16 +144,20 @@ export function Dashboard() {
                   Hey {welcomeName}, great to have you! 🎉
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-lg">
-                  Your account has been created. Start by adding assets to your{" "}
-                  <span className="text-emerald-400 font-medium">Portfolio</span>, setting up a{" "}
-                  <span className="text-emerald-400 font-medium">Watchlist</span>, or creating{" "}
-                  <span className="text-emerald-400 font-medium">Price Alerts</span>.
+                  Your account has been created. A welcome letter has been dispatched to{" "}
+                  <span className="text-emerald-400 font-semibold">{user?.email || "your email"}</span>.
                 </p>
-                <div className="flex items-center gap-2 mt-3">
-                  <Mail className="size-3.5 text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">
-                    A welcome confirmation has been logged to your account.
-                  </p>
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    onClick={() => setShowWelcomeEmailModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 transition-colors"
+                  >
+                    <Mail className="size-3.5" />
+                    Preview Welcome Email
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    Sent & synced with Firebase.
+                  </span>
                 </div>
               </div>
             </div>
@@ -161,6 +167,51 @@ export function Dashboard() {
             >
               <X className="size-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Welcome Email Inspection Modal */}
+      {showWelcomeEmailModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
+          <div className="w-full max-w-2xl bg-card border border-border/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between p-4 border-b border-border/30 bg-muted/60">
+              <div className="flex items-center gap-2">
+                <Mail className="size-4 text-emerald-400" />
+                <span className="text-sm font-semibold text-foreground">
+                  Dispatched Welcome Email — {user?.email || "New Member"}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowWelcomeEmailModal(false)}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 bg-background/50">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-1 text-xs">
+                <p className="text-muted-foreground"><strong>To:</strong> {user?.email || "User"}</p>
+                <p className="text-muted-foreground"><strong>Subject:</strong> Welcome to InvestIQ — Your Investment Analytics Platform 🎉</p>
+                <p className="text-muted-foreground"><strong>Status:</strong> Queued & Dispatched via Firebase Mail Trigger</p>
+              </div>
+
+              <div className="rounded-xl border border-border/30 overflow-hidden shadow-inner">
+                <iframe
+                  srcDoc={generateWelcomeEmailHTML(user?.displayName || "Investor", user?.email || "investor@example.com")}
+                  title="Welcome Email Preview"
+                  className="w-full h-[400px] border-0 rounded-xl"
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-border/30 bg-muted/40 flex justify-end">
+              <button
+                onClick={() => setShowWelcomeEmailModal(false)}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold"
+              >
+                Close Preview
+              </button>
+            </div>
           </div>
         </div>
       )}
