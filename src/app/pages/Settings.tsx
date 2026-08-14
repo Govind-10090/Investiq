@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Bell, Shield, Palette, Globe, Check } from "lucide-react";
+import { User, Bell, Shield, Palette, Globe, Check, Phone, ShieldCheck } from "lucide-react";
 import { useAuthStore, useThemeStore } from "../../store";
 import { dbService } from "../../firebase/config";
 
@@ -8,6 +8,7 @@ export function Settings() {
   const { theme, setTheme } = useThemeStore();
   const [displayName, setDisplayName] = useState(user?.displayName || "Retail Investor");
   const [email, setEmail] = useState(user?.email || "investor@example.com");
+  const [phone, setPhone] = useState("");
   
   // Preferences
   const [priceAlerts, setPriceAlerts] = useState(true);
@@ -25,6 +26,7 @@ export function Settings() {
         try {
           const settings = await dbService.getSettings(user.uid);
           if (settings) {
+            if (settings.phone) setPhone(settings.phone);
             if (settings.priceAlerts !== undefined) setPriceAlerts(settings.priceAlerts);
             if (settings.portfolioUpdates !== undefined) setPortfolioUpdates(settings.portfolioUpdates);
             if (settings.marketNews !== undefined) setMarketNews(settings.marketNews);
@@ -43,6 +45,7 @@ export function Settings() {
     if (user?.uid) {
       try {
         await dbService.saveSettings(user.uid, {
+          phone,
           priceAlerts,
           portfolioUpdates,
           marketNews,
@@ -118,6 +121,28 @@ export function Settings() {
                 value={email}
                 className="w-full h-10 px-4 bg-background/50 border border-border/20 rounded-lg text-xs text-muted-foreground cursor-not-allowed"
               />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-muted-foreground">Registered Phone Number</label>
+                {phone ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/25">
+                    <ShieldCheck className="size-3" /> OTP Verified
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">Not linked</span>
+                )}
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <input
+                  type="tel"
+                  placeholder="e.g. +91 98765 43210"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full h-10 pl-9 pr-4 bg-background border border-border/40 rounded-lg text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
             </div>
           </div>
         </div>
