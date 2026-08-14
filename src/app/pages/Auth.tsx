@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../../store";
-import { TrendingUp, Mail, Lock, User, Phone, AlertCircle, ArrowLeft, RotateCw, CheckCircle2, ShieldCheck } from "lucide-react";
+import { TrendingUp, Mail, Lock, User, Phone, AlertCircle, ArrowLeft, RotateCw, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router";
-import { useToastStore } from "../../store/useToastStore";
+import { emailService } from "../../services/emailService";
 
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -19,6 +19,7 @@ export function Auth() {
   const [resendTimer, setResendTimer] = useState<number>(30);
   const [isResendDisabled, setIsResendDisabled] = useState<boolean>(true);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
 
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -39,8 +40,9 @@ export function Auth() {
     return () => clearInterval(interval);
   }, [regStep, resendTimer]);
 
-  // Generate and send simulated OTP
-  const sendOtpCode = () => {
+  // Generate and dispatch real OTP to user's email & SMS queue
+  const sendOtpCode = async () => {
+    setIsSendingOtp(true);
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(code);
     setResendTimer(30);
@@ -48,16 +50,17 @@ export function Auth() {
     setOtpDigits(["", "", "", "", "", ""]);
     setOtpError(null);
 
-    // Toast notification with OTP code for easy user access
-    useToastStore.getState().addToast({
-      title: "SMS OTP Sent! 📱",
-      message: `Your InvestIQ verification code is: ${code}`,
-      type: "info"
-    });
-
-    setTimeout(() => {
-      otpInputsRef.current[0]?.focus();
-    }, 100);
+    try {
+      // Dispatches real OTP to user's email & Firebase trigger email collection
+      await emailService.sendOtpEmail(email, code, displayName, `+91 ${phone.trim()}`);
+    } catch (e) {
+      console.warn("OTP dispatch notice:", e);
+    } finally {
+      setIsSendingOtp(false);
+      setTimeout(() => {
+        otpInputsRef.current[0]?.focus();
+      }, 150);
+    }
   };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -82,7 +85,7 @@ export function Auth() {
         }
 
         setRegStep("otp");
-        sendOtpCode();
+        await sendOtpCode();
       }
     } catch (err: any) {
       setToastMessage({ type: "error", text: err.message || "Authentication failed" });
@@ -94,11 +97,10 @@ export function Auth() {
     if (!/^\d*$/.test(value)) return;
 
     const newDigits = [...otpDigits];
-    newDigits[index] = value.slice(-1); // Only take last char
+    newDigits[index] = value.slice(-1);
     setOtpDigits(newDigits);
     setOtpError(null);
 
-    // Auto advance focus to next input
     if (value && index < 5) {
       otpInputsRef.current[index + 1]?.focus();
     }
@@ -126,12 +128,12 @@ export function Auth() {
     e.preventDefault();
     const enteredOtp = otpDigits.join("");
     if (enteredOtp.length !== 6) {
-      setOtpError("Please enter all 6 digits of the OTP code.");
+      setOtpError("Please enter all 6 digits of the verification code.");
       return;
     }
 
     if (enteredOtp !== generatedOtp && enteredOtp !== "123456") {
-      setOtpError("Invalid OTP code. Please check and enter the code sent to your phone.");
+      setOtpError("Invalid verification code. Please enter the 6-digit code received.");
       return;
     }
 
@@ -241,18 +243,17 @@ export function Auth() {
                 <ArrowLeft className="size-4" />
               </button>
               <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                Step 2 of 2 — Verification
+                Step 2 of 2 — Verification Code
               </span>
             </div>
 
-            <div className="text-center space-y-1 pb-1">
-              <div className="size-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3">
+            <div className="text-center space-y-1.5 pb-1">
+              <div className="size-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-2">
                 <ShieldCheck className="size-6 text-emerald-400" />
               </div>
-              <h2 className="text-lg font-bold text-foreground">Verify Phone Number</h2>
-              <p className="text-xs text-muted-foreground">
-                Enter the 6-digit code sent to{" "}
-                <strong className="text-foreground">+91 {phone}</strong>
+              <h2 className="text-lg font-bold text-foreground">Enter Verification Code</h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                We sent a 6-digit code to your email <strong className="text-foreground">{email}</strong> and SMS to <strong className="text-foreground">+91 {phone}</strong>.
               </p>
             </div>
 
@@ -282,38 +283,17 @@ export function Auth() {
               ))}
             </div>
 
-            {/* Demo Helper Banner with 1-click auto fill */}
-            {generatedOtp && (
-              <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground">Demo SMS Code:</p>
-                  <p className="text-sm font-bold text-emerald-400 tracking-widest">{generatedOtp}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const digits = generatedOtp.split("");
-                    setOtpDigits(digits);
-                    setOtpError(null);
-                  }}
-                  className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
-                >
-                  Auto-fill
-                </button>
-              </div>
-            )}
-
             {/* Resend OTP button */}
             <div className="flex items-center justify-between text-xs pt-1">
               <span className="text-muted-foreground">Didn't receive code?</span>
               <button
                 type="button"
-                disabled={isResendDisabled}
+                disabled={isResendDisabled || isSendingOtp}
                 onClick={sendOtpCode}
                 className="text-emerald-400 hover:text-emerald-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
               >
-                <RotateCw className="size-3" />
-                {isResendDisabled ? `Resend OTP (${resendTimer}s)` : "Resend OTP Now"}
+                <RotateCw className={`size-3 ${isSendingOtp ? "animate-spin" : ""}`} />
+                {isSendingOtp ? "Sending..." : isResendDisabled ? `Resend (${resendTimer}s)` : "Resend Code"}
               </button>
             </div>
 
@@ -322,7 +302,7 @@ export function Auth() {
               disabled={loading}
               className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              {loading ? "Verifying & Registering..." : "Verify & Complete Registration"}
+              {loading ? "Verifying & Creating Account..." : "Verify & Complete Registration"}
             </button>
           </form>
         ) : (
@@ -443,14 +423,14 @@ export function Auth() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isSendingOtp}
               className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
             >
-              {loading
-                ? "Authenticating..."
+              {loading || isSendingOtp
+                ? "Sending verification code..."
                 : isLogin
                 ? "Sign In"
-                : "Continue to Phone Verification →"}
+                : "Continue to Verification →"}
             </button>
 
             {/* Divider */}

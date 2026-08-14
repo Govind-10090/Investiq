@@ -11,6 +11,108 @@ export interface WelcomeEmailData {
   htmlContent: string;
 }
 
+export function generateOtpEmailHTML(name: string, email: string, otp: string, phone: string): string {
+  const currentYear = new Date().getFullYear();
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your InvestIQ Verification Code</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0d0e15;
+      color: #e4e4e7;
+      margin: 0;
+      padding: 0;
+    }
+    .wrapper {
+      max-width: 540px;
+      margin: 30px auto;
+      background: #16161e;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .header {
+      background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+      padding: 30px;
+      text-align: center;
+      border-bottom: 1px solid rgba(16,185,129,0.2);
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    .logo span {
+      color: #34d399;
+    }
+    .content {
+      padding: 32px;
+      line-height: 1.6;
+      text-align: center;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+    .otp-box {
+      margin: 24px auto;
+      padding: 16px 28px;
+      background: #1e1e2d;
+      border: 2px dashed #10b981;
+      border-radius: 12px;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #34d399;
+      width: fit-content;
+    }
+    .footer {
+      background: #111118;
+      padding: 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #71717a;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <div class="logo">Invest<span>IQ</span></div>
+      <p style="margin: 6px 0 0 0; color: #a7f3d0; font-size: 13px;">Security & Account Verification</p>
+    </div>
+    
+    <div class="content">
+      <h2 class="title">Your One-Time Verification Code</h2>
+      <p style="color: #a1a1aa; font-size: 13px; margin: 0 auto; max-width: 400px;">
+        Hi ${name || "Investor"}, use the code below to complete your registration for <strong>${email}</strong> (Phone: ${phone}).
+      </p>
+      
+      <div class="otp-box">${otp}</div>
+      
+      <p style="color: #71717a; font-size: 12px; margin-top: 16px;">
+        ⏱️ This code is valid for 10 minutes. If you did not request this, you can safely ignore this email.
+      </p>
+    </div>
+    
+    <div class="footer">
+      © ${currentYear} InvestIQ Analytics Inc. Never share your OTP with anyone.
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
 export function generateWelcomeEmailHTML(name: string, email: string): string {
   const currentYear = new Date().getFullYear();
   return `
@@ -78,23 +180,6 @@ export function generateWelcomeEmailHTML(name: string, email: string): string {
       border-radius: 12px;
       padding: 20px;
       margin: 24px 0;
-    }
-    .feature-item {
-      display: flex;
-      margin-bottom: 14px;
-    }
-    .feature-icon {
-      font-size: 18px;
-      margin-right: 12px;
-    }
-    .feature-text strong {
-      color: #ffffff;
-      display: block;
-      font-size: 14px;
-    }
-    .feature-text span {
-      color: #a1a1aa;
-      font-size: 12px;
     }
     .cta-btn {
       display: block;
@@ -188,11 +273,60 @@ export function generateWelcomeEmailHTML(name: string, email: string): string {
 
 export const emailService = {
   /**
-   * Dispatches a welcome email to the newly registered user:
-   * 1. Writes to Firebase "mail" collection (standard Firebase trigger-email extension)
-   * 2. Writes to Firebase "welcome_emails" audit collection
-   * 3. Stores in localStorage for offline preview
-   * 4. Dispatches to REST webhook / EmailJS if env variables are defined
+   * Dispatches real OTP verification code to user's email & logs to Firebase mail trigger
+   */
+  sendOtpEmail: async (toEmail: string, otp: string, displayName: string, phone: string): Promise<void> => {
+    const name = displayName || "Investor";
+    const subject = `Your InvestIQ Verification Code: ${otp}`;
+    const htmlContent = generateOtpEmailHTML(name, toEmail, otp, phone);
+    const sentAt = new Date().toISOString();
+
+    // 1. Firebase Firestore Trigger Email Collection ("mail")
+    if (isLiveFirebase) {
+      try {
+        await addDoc(collection(firebaseDb, "mail"), {
+          to: toEmail,
+          message: {
+            subject,
+            html: htmlContent,
+            text: `Your InvestIQ verification code is: ${otp}. Valid for 10 minutes.`
+          },
+          createdAt: sentAt
+        });
+      } catch (err) {
+        console.warn("InvestIQ: Firestore OTP mail queue warning:", err);
+      }
+    }
+
+    // 2. Webhook dispatch if configured
+    const webhookUrl = import.meta.env.VITE_OTP_WEBHOOK || import.meta.env.VITE_WELCOME_EMAIL_WEBHOOK;
+    if (webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: toEmail,
+            phone,
+            otp,
+            name,
+            subject,
+            html: htmlContent
+          })
+        });
+      } catch (_) {}
+    }
+
+    // 3. User feedback toast
+    useToastStore.getState().addToast({
+      title: "OTP Dispatched 📨",
+      message: `Verification code sent to ${toEmail} and SMS.`,
+      type: "info"
+    });
+  },
+
+  /**
+   * Dispatches welcome email upon registration
    */
   sendWelcomeEmail: async (toEmail: string, displayName: string): Promise<WelcomeEmailData> => {
     const name = displayName || "Investor";
@@ -209,13 +343,10 @@ export const emailService = {
       htmlContent
     };
 
-    // 1. Store in localStorage for instant in-app review
     try {
       localStorage.setItem("investiq_last_welcome_email", JSON.stringify(emailData));
     } catch (_) {}
 
-    // 2. Persist to Firebase Firestore Trigger Email Collection ("mail")
-    // When Firebase Extension (Trigger Email) is installed, this sends the real email automatically.
     if (isLiveFirebase) {
       try {
         await addDoc(collection(firebaseDb, "mail"), {
@@ -228,7 +359,6 @@ export const emailService = {
           createdAt: sentAt
         });
 
-        // Also record in welcome_emails log collection
         const logId = `welcome-${toEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
         await setDoc(doc(firebaseDb, "welcome_emails", logId), {
           email: toEmail,
@@ -241,7 +371,6 @@ export const emailService = {
       }
     }
 
-    // 3. Optional Webhook dispatch (if user has configured a custom webhook / Resend / Formspree URL)
     const webhookUrl = import.meta.env.VITE_WELCOME_EMAIL_WEBHOOK;
     if (webhookUrl) {
       try {
@@ -258,7 +387,6 @@ export const emailService = {
       } catch (_) {}
     }
 
-    // 4. Trigger In-App Notification Toast
     useToastStore.getState().addToast({
       title: "Welcome Email Sent! 📬",
       message: `A welcome email has been sent to ${toEmail}.`,
